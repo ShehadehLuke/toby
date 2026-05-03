@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { runSharedChatTurn } from "../../chat-pipeline/run-turn";
 import type { CredentialsFile } from "../../config/index";
 import {
 	getAzureAdAuthMethod,
@@ -14,7 +15,6 @@ import type {
 	IntegrationToolHealth,
 } from "../types";
 import { runAzureAdOAuthPkceFlow } from "./auth";
-import { runAzureAdChatTurn } from "./chat-turn";
 import {
 	getGraphAccessToken,
 	getRequiredAzureAdGraphPermissions,
@@ -305,8 +305,7 @@ async function chat(options: ChatRunOptions): Promise<void> {
 		buildAzureAdChatUserMessage(options.prompt),
 	];
 
-	const result = await runAzureAdChatTurn({
-		messages,
+	const result = await runSharedChatTurn([azureAdIntegrationModule], messages, {
 		persona,
 		dryRun,
 		maxResults: options.maxResults,
@@ -361,7 +360,6 @@ export const azureAdIntegrationModule: IntegrationModule = {
 			appliedActions: ctx.appliedActions,
 		};
 	},
-	runChatTurn: runAzureAdChatTurn,
 	chatModelPrep: {
 		systemPromptSection: `### Azure AD
 You are assisting with Azure AD (Microsoft Entra ID) via Microsoft Graph. Use tools to look up users and Teams metadata. Never claim a user/team exists unless confirmed by tool results.`,

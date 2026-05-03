@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { runSharedChatTurn } from "../../chat-pipeline/run-turn";
 import type { CredentialsFile } from "../../config/index";
 import {
 	getGmailCredentials,
@@ -14,7 +15,6 @@ import type {
 	SummarizeRunResult,
 } from "../types";
 import { runOAuthFlow } from "./auth";
-import { runGmailChatTurn } from "./chat-turn";
 import {
 	fetchUnreadInbox,
 	getGmailGrantedScopes,
@@ -224,8 +224,7 @@ async function chat(options: ChatRunOptions): Promise<void> {
 
 	console.log(chalk.cyan("Running assistant…\n"));
 
-	const result = await runGmailChatTurn({
-		messages,
+	const result = await runSharedChatTurn([gmailIntegrationModule], messages, {
 		persona,
 		dryRun,
 		maxResults,
@@ -300,7 +299,6 @@ export const gmailIntegrationModule: IntegrationModule = {
 		};
 		return { tools: createGmailTools(ctx), appliedActions: ctx.appliedActions };
 	},
-	runChatTurn: runGmailChatTurn,
 	chatModelPrep: {
 		systemPromptSection: `### Gmail
 You are assisting with Gmail. Use Gmail tools to inspect or change the mailbox. Prefer holistic inbox overview before loading many messages. Never claim a mutation succeeded unless the corresponding Gmail tool succeeded.`,

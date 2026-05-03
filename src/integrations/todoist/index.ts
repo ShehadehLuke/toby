@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
+import { runSharedChatTurn } from "../../chat-pipeline/run-turn";
 import type { CredentialsFile } from "../../config/index";
 import { readConfig, writeConfig } from "../../config/index";
 import type {
@@ -10,7 +11,6 @@ import type {
 	SummarizeRunOptions,
 	SummarizeRunResult,
 } from "../types";
-import { runTodoistChatTurn } from "./chat-turn";
 import {
 	fetchCompletedTasks,
 	fetchOpenTasks,
@@ -205,8 +205,7 @@ async function chat(options: ChatRunOptions): Promise<void> {
 		buildTodoistChatUserMessage(openTasks, completedTasks),
 	];
 
-	const result = await runTodoistChatTurn({
-		messages,
+	const result = await runSharedChatTurn([todoistIntegrationModule], messages, {
 		persona,
 		dryRun,
 		maxResults: options.maxResults,
@@ -257,7 +256,6 @@ export const todoistIntegrationModule: IntegrationModule = {
 			appliedActions: ctx.appliedActions,
 		};
 	},
-	runChatTurn: runTodoistChatTurn,
 	chatModelPrep: {
 		systemPromptSection: `### Todoist
 You are assisting with Todoist. Use Todoist tools to create, read, or update tasks. Open/completed task snapshots may appear in the user message below. Never claim a task changed unless the corresponding Todoist tool succeeded.`,

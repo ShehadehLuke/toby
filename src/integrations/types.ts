@@ -1,9 +1,6 @@
 import type { Tool } from "ai";
-import type { LanguageModelUsage, ProviderMetadata } from "ai";
 import type { Command } from "commander";
-import type { AskUserHandler } from "../ai/ask-user-tool";
 import type { CoreMessage } from "../ai/chat";
-import type { ChatWithToolsOptions } from "../ai/chat";
 import type { CredentialsFile, Persona } from "../config/index";
 
 export interface IntegrationToolHealth {
@@ -84,24 +81,6 @@ interface IntegrationChatTools {
 	readonly appliedActions: string[];
 }
 
-interface IntegrationChatTurnParams {
-	readonly messages: CoreMessage[];
-	readonly persona: Persona;
-	readonly dryRun: boolean;
-	readonly maxResults?: number;
-	readonly askUser?: AskUserHandler;
-	readonly chatWithToolsOptions?: ChatWithToolsOptions;
-}
-
-interface IntegrationChatTurnResult {
-	readonly text: string;
-	readonly toolCalls: { name: string; args: Record<string, unknown> }[];
-	readonly appliedActions: string[];
-	readonly responseMessages: CoreMessage[];
-	readonly usage?: LanguageModelUsage;
-	readonly providerMetadata?: ProviderMetadata;
-}
-
 /** Lifecycle + plugin hooks for a first-party integration module. */
 export interface Integration {
 	readonly name: string;
@@ -137,13 +116,6 @@ export interface IntegrationModule extends Integration {
 		readonly dryRun: boolean;
 		readonly maxResults?: number;
 	}) => Promise<IntegrationChatTools> | IntegrationChatTools;
-	/**
-	 * Run a tool-calling model turn for this integration using shared runner infrastructure.
-	 * If omitted, shared routing can fall back to `createChatTools` + `chatWithTools`.
-	 */
-	readonly runChatTurn?: (
-		params: IntegrationChatTurnParams,
-	) => Promise<IntegrationChatTurnResult>;
 	/** Optional organize runner (capability-gated by `capabilities`). */
 	readonly organize?: (params: {
 		readonly maxResults: number;

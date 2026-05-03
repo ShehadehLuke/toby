@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { runSharedChatTurn } from "../../chat-pipeline/run-turn";
 import type { CredentialsFile } from "../../config/index";
 import { readConfig, writeConfig } from "../../config/index";
 import type {
@@ -7,7 +8,6 @@ import type {
 	IntegrationModule,
 	IntegrationToolHealth,
 } from "../types";
-import { runAppleMailChatTurn } from "./chat-turn";
 import {
 	isAppleMailPlatformSupported,
 	listAppleMailAccountsSync,
@@ -198,12 +198,15 @@ async function chat(options: ChatRunOptions): Promise<void> {
 
 	console.log(chalk.cyan("Running assistant…\n"));
 
-	const result = await runAppleMailChatTurn({
+	const result = await runSharedChatTurn(
+		[applemailIntegrationModule],
 		messages,
-		persona,
-		dryRun,
-		maxResults,
-	});
+		{
+			persona,
+			dryRun,
+			maxResults,
+		},
+	);
 
 	for (const action of result.appliedActions) {
 		console.log(chalk.green(`+ ${action}`));
@@ -271,7 +274,6 @@ export const applemailIntegrationModule: IntegrationModule = {
 			appliedActions: ctx.appliedActions,
 		};
 	},
-	runChatTurn: runAppleMailChatTurn,
 	chatModelPrep: {
 		systemPromptSection: `### Apple Mail
 You assist with local Apple Mail via Mail.app. Use Apple Mail tools to search, archive, flag, move between folders, create drafts, or update drafts by numeric message id. Mail has no Gmail-style labels; folders and the built-in flag are the practical equivalents. Never claim success unless the tool returned success.`,
