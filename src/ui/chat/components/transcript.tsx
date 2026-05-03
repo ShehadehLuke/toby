@@ -141,7 +141,11 @@ export function buildTranscriptNodes(
 		}
 		if (r.kind === "error") {
 			nodes.push(
-				<Box key={`e-${outIdx}-${r.text.slice(0, 80)}`} width={termCols}>
+				<Box
+					key={`e-${outIdx}-${r.text.slice(0, 80)}`}
+					marginLeft={2}
+					width={Math.max(12, termCols - 2)}
+				>
 					<Text color="red" wrap="truncate-end">
 						{r.text}
 					</Text>
@@ -242,7 +246,11 @@ export function buildTranscriptNodes(
 			continue;
 		}
 		nodes.push(
-			<Box key={`m-${outIdx}-${r.text.slice(0, 20)}`} width={termCols}>
+			<Box
+				key={`m-${outIdx}-${r.text.slice(0, 20)}`}
+				marginLeft={2}
+				width={Math.max(12, termCols - 2)}
+			>
 				<Text dimColor wrap="truncate-end">
 					{r.text}
 				</Text>

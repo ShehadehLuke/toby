@@ -79,7 +79,7 @@ For each user submission:
 4. `chatWithTools` uses:
   - `streamText(...)` when the Ink UI wants incremental tokens, or
   - `generateText(...)` in non-streaming contexts.
-5. Tool lifecycle hooks (`onToolCallStart` / `onToolCallComplete`) are implemented by wrapping each tool’s `execute` in `[src/ai/chat.ts](../src/ai/chat.ts)`. Optional `**onChatEvent`** emits UI-agnostic `[ChatEvent](../src/chat-pipeline/chat-events.ts)` values (assistant segments at tool boundaries, tool start/complete, etc.). The Ink session maps those events to transcript rows via `[src/ui/chat/chat-event-reducer.ts](../src/ui/chat/chat-event-reducer.ts)`.
+5. Tool lifecycle hooks (`onToolCallStart` / `onToolCallComplete`) are implemented by wrapping each tool’s `execute` in `[src/ai/chat.ts](../src/ai/chat.ts)`. Optional `**onChatEvent`** emits UI-agnostic `[ChatEvent](../src/chat-pipeline/chat-events.ts)` values (assistant segments at tool boundaries, tool start/complete, `prep_*`, `lifecycle_*` milestones, etc.). The Ink session maps those events to transcript rows via `[src/ui/chat/chat-event-reducer.ts](../src/ui/chat/chat-event-reducer.ts)` (prep and lifecycle render as boxed pipeline steps in the TUI transcript).
 6. The SDK returns `response.messages` (assistant + tool result messages), which are appended to history for the next turn.
 
 ### Tool result cache (read-only tools)

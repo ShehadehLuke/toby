@@ -5,6 +5,7 @@ import {
 } from "./constants";
 import {
 	ASSISTANT_TRANSCRIPT_GLYPH,
+	PIPELINE_STEP_GLYPH,
 	getToolTranscriptGlyph,
 } from "./tool-transcript-icons";
 import type { DisplayRow, TranscriptEntry } from "./types";
@@ -181,20 +182,19 @@ export function flattenTranscript(
 			}
 			const gapBeforeReply =
 				next?.kind === "assistant" ||
-				(next?.kind === "boxed_step" && next.variant !== "prep") ||
+				next?.kind === "boxed_step" ||
 				next?.kind === "tool_call";
 			if (gapBeforeReply) {
 				gapKey += 1;
 				rows.push({ kind: "spacer", rowKey: `gap-${gapKey}` });
 			}
 		} else if (e.kind === "boxed_step") {
-			if (e.variant === "prep") {
-				continue;
-			}
 			const leadingGlyph =
 				e.variant === "tool"
 					? getToolTranscriptGlyph(e.toolName ?? "")
-					: ASSISTANT_TRANSCRIPT_GLYPH;
+					: e.variant === "prep" || e.variant === "lifecycle"
+						? PIPELINE_STEP_GLYPH
+						: ASSISTANT_TRANSCRIPT_GLYPH;
 			rows.push({
 				kind: "boxed_block",
 				id: e.id,
@@ -295,7 +295,9 @@ export function flattenTranscript(
 				rows.push({ kind: "spacer", rowKey: `gap-${gapKey}` });
 			}
 		} else {
-			for (const line of hardWrap(e.text, termCols)) {
+			// Match pipeline / user body inset (see `buildTranscriptNodes` meta + error margins).
+			const insetCols = Math.max(8, termCols - 2);
+			for (const line of hardWrap(e.text, insetCols)) {
 				rows.push({ kind: e.kind, text: line });
 			}
 		}

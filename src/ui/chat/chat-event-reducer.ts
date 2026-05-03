@@ -52,13 +52,14 @@ function replaceEntry(
 	return out;
 }
 
-function findLastBoxedPrepIndex(
+function findLastBoxedStepIndex(
 	entries: readonly TranscriptEntry[],
 	id: string,
+	variant: "prep" | "lifecycle",
 ): number {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
-		if (e.kind === "boxed_step" && e.variant === "prep" && e.id === id) {
+		if (e.kind === "boxed_step" && e.variant === variant && e.id === id) {
 			return i;
 		}
 	}
@@ -124,7 +125,7 @@ export function applyChatEvent(
 		];
 	}
 	if (event.type === "prep_end") {
-		const idx = findLastBoxedPrepIndex(entries, event.id);
+		const idx = findLastBoxedStepIndex(entries, event.id, "prep");
 		if (idx < 0) {
 			return [
 				...entries,
@@ -134,6 +135,44 @@ export function applyChatEvent(
 					seq: event.seq,
 					variant: "prep",
 					header: "Prompt preparation",
+					body: event.detail,
+				},
+			];
+		}
+		const cur = entries[idx];
+		if (cur.kind !== "boxed_step") {
+			return [...entries];
+		}
+		return replaceEntry(entries, idx, {
+			...cur,
+			body: event.detail,
+			seq: event.seq,
+		});
+	}
+	if (event.type === "lifecycle_start") {
+		return [
+			...entries,
+			{
+				kind: "boxed_step",
+				id: event.id,
+				seq: event.seq,
+				variant: "lifecycle",
+				header: event.header,
+				body: "",
+			},
+		];
+	}
+	if (event.type === "lifecycle_end") {
+		const idx = findLastBoxedStepIndex(entries, event.id, "lifecycle");
+		if (idx < 0) {
+			return [
+				...entries,
+				{
+					kind: "boxed_step",
+					id: event.id,
+					seq: event.seq,
+					variant: "lifecycle",
+					header: "Pipeline",
 					body: event.detail,
 				},
 			];

@@ -238,6 +238,20 @@ describe("boxed_step persistence", () => {
 		expect(deserializeTranscriptRow(row)).toEqual(e);
 	});
 
+	it("round-trips lifecycle boxed_step", () => {
+		const e: TranscriptEntry = {
+			kind: "boxed_step",
+			id: "lc1",
+			seq: 2,
+			variant: "lifecycle",
+			header: "Saving session…",
+			body: "Session data queued to save.",
+		};
+		const row = serializeTranscriptEntry(e);
+		expect(row.kind).toBe("boxed_step");
+		expect(deserializeTranscriptRow(row)).toEqual(e);
+	});
+
 	it("round-trips grouped tool runs", () => {
 		const e: TranscriptEntry = {
 			kind: "boxed_step",
@@ -290,7 +304,7 @@ describe("flattenTranscript boxed_step", () => {
 		expect(bb && bb.kind === "boxed_block" && bb.cacheHit).toBe(true);
 	});
 
-	it("hides prep boxed_step from display rows", () => {
+	it("shows prep boxed_step in display rows", () => {
 		const entries: TranscriptEntry[] = [
 			{
 				kind: "boxed_step",
@@ -313,8 +327,37 @@ describe("flattenTranscript boxed_step", () => {
 		];
 		const rows = flattenTranscript(entries, "", false, 80);
 		const boxed = rows.filter((r) => r.kind === "boxed_block");
-		expect(boxed).toHaveLength(1);
-		expect(boxed[0]?.kind === "boxed_block" && boxed[0].variant).toBe("tool");
+		expect(boxed).toHaveLength(2);
+		expect(boxed[0]?.kind === "boxed_block" && boxed[0].variant).toBe("prep");
+		expect(boxed[1]?.kind === "boxed_block" && boxed[1].variant).toBe("tool");
+	});
+
+	it("lifecycle_start then lifecycle_end updates the same boxed row", () => {
+		const id = "lc-1";
+		let t: TranscriptEntry[] = [];
+		t = applyChatEvent(t, {
+			type: "lifecycle_start",
+			id,
+			seq: 1,
+			header: "Preparing integration context…",
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		expect(t[0]?.kind).toBe("boxed_step");
+		if (t[0]?.kind === "boxed_step") {
+			expect(t[0].variant).toBe("lifecycle");
+		}
+		t = applyChatEvent(t, {
+			type: "lifecycle_end",
+			id,
+			seq: 2,
+			detail: "Integration prompt ready.",
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		const row = t[0];
+		expect(row?.kind).toBe("boxed_step");
+		if (row?.kind === "boxed_step") {
+			expect(row.body).toBe("Integration prompt ready.");
+		}
 	});
 
 	it("renders grouped tool runs as expanded body lines", () => {

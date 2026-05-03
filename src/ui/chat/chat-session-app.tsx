@@ -44,6 +44,7 @@ import {
 import { buildTranscriptNodes } from "./components/transcript";
 import { ACCENT } from "./constants";
 import { formatToolStatusLine } from "./format-tool-status";
+import { activityLineForChatEvent } from "./pipeline-footer";
 import {
 	injectSkillBodiesIntoFirstSystemMessage,
 	prepareChatSessionMessages,
@@ -412,7 +413,6 @@ export function ChatSessionApp({
 				throw new Error("Internal error: missing session id");
 			}
 			setLoading(true);
-			setActivityLine("Thinking…");
 			setStreamingAssistant("");
 			setStreamingAssistantHeader("Toby");
 			assistantStreamBufRef.current = "";
@@ -423,6 +423,10 @@ export function ChatSessionApp({
 				return transcriptLocalSeqRef.current;
 			};
 			const emitChatEvent = (ev: ChatEvent) => {
+				const footerHint = activityLineForChatEvent(ev);
+				if (footerHint !== null) {
+					setActivityLine(footerHint);
+				}
 				if (ev.type === "assistant_segment_start") {
 					assistantSegmentHeaderRef.current = ev.header;
 					assistantStreamBufRef.current = "";
@@ -521,7 +525,23 @@ export function ChatSessionApp({
 					}
 				}
 				setStreamingAssistant("");
-				setTranscript((t) => [...t, ...additions]);
+				setTranscript((t) => {
+					const persistId = randomUUID();
+					let nt = [...t, ...additions];
+					nt = applyChatEvent(nt, {
+						type: "lifecycle_start",
+						id: persistId,
+						seq: nextLocalSeq(),
+						header: "Saving session…",
+					});
+					nt = applyChatEvent(nt, {
+						type: "lifecycle_end",
+						id: persistId,
+						seq: nextLocalSeq(),
+						detail: "Session data queued to save.",
+					});
+					return nt;
+				});
 			} catch (e) {
 				const partial = assistantStreamBufRef.current.trim();
 				assistantStreamBufRef.current = "";
@@ -617,6 +637,13 @@ export function ChatSessionApp({
 				if (cancelled) {
 					return;
 				}
+				const bootCtxLifecycleId = randomUUID();
+				bootTranscript = applyChatEvent(bootTranscript, {
+					type: "lifecycle_start",
+					id: bootCtxLifecycleId,
+					seq: bootSeq(),
+					header: "Preparing integration context…",
+				});
 				let initial = await prepareChatSessionMessages(
 					selectedModules,
 					activePersona,
@@ -630,6 +657,12 @@ export function ChatSessionApp({
 				if (cancelled) {
 					return;
 				}
+				bootTranscript = applyChatEvent(bootTranscript, {
+					type: "lifecycle_end",
+					id: bootCtxLifecycleId,
+					seq: bootSeq(),
+					detail: "Integration prompt ready.",
+				});
 				setMessages(initial);
 				const userEntries: TranscriptEntry[] = sessionPrompt.trim()
 					? [{ kind: "user", text: sessionPrompt }]
@@ -651,10 +684,10 @@ export function ChatSessionApp({
 					spec: prepSpec,
 				});
 				const nextTranscript = [
+					...userEntries,
 					...bootTranscript,
 					...skillDebugMeta,
 					...skillMeta,
-					...userEntries,
 					...metaEntries,
 				];
 				setTranscript(nextTranscript);
@@ -974,6 +1007,7 @@ export function ChatSessionApp({
 					transcriptLocalSeqRef.current += 1;
 					return transcriptLocalSeqRef.current;
 				};
+				setTranscript((t) => [...t, { kind: "user", text: line }]);
 				const prepId = willPretreat ? randomUUID() : null;
 				if (willPretreat && prepId) {
 					setTranscript((t) =>
@@ -999,6 +1033,18 @@ export function ChatSessionApp({
 					setLoading(false);
 					return;
 				}
+				const mergeLifecycleId = randomUUID();
+				const mergeStartEv = {
+					type: "lifecycle_start" as const,
+					id: mergeLifecycleId,
+					seq: submitSeq(),
+					header: "Updating session messages…",
+				};
+				setTranscript((t) => applyChatEvent(t, mergeStartEv));
+				const mergeStartFooter = activityLineForChatEvent(mergeStartEv);
+				if (mergeStartFooter !== null) {
+					setActivityLine(mergeStartFooter);
+				}
 				const userMsg: CoreMessage = { role: "user", content };
 				let next = [...msgsAfter, userMsg];
 				next = injectSkillBodiesIntoFirstSystemMessage(
@@ -1007,6 +1053,17 @@ export function ChatSessionApp({
 					localSkills,
 				);
 				setMessages(next);
+				const mergeEndEv = {
+					type: "lifecycle_end" as const,
+					id: mergeLifecycleId,
+					seq: submitSeq(),
+					detail: "Session messages updated.",
+				};
+				setTranscript((t) => applyChatEvent(t, mergeEndEv));
+				const mergeEndFooter = activityLineForChatEvent(mergeEndEv);
+				if (mergeEndFooter !== null) {
+					setActivityLine(mergeEndFooter);
+				}
 				const skillDebugMeta = buildSkillDebugTranscriptEntries({
 					debug,
 					available: localSkills,
@@ -1027,21 +1084,24 @@ export function ChatSessionApp({
 					const skillMeta = transcriptMetaForAttachedSkills(
 						spec?.relevantSkills ?? [],
 					);
+					const prepEndEv = {
+						type: "prep_end" as const,
+						id: prepId,
+						seq: submitSeq(),
+						detail,
+					};
 					setTranscript((t) => [
-						...applyChatEvent(t, {
-							type: "prep_end",
-							id: prepId,
-							seq: submitSeq(),
-							detail,
-						}),
+						...applyChatEvent(t, prepEndEv),
 						...skillDebugMeta,
 						...skillMeta,
 					]);
+					const prepEndFooter = activityLineForChatEvent(prepEndEv);
+					if (prepEndFooter !== null) {
+						setActivityLine(prepEndFooter);
+					}
 				} else if (skillDebugMeta.length > 0) {
 					setTranscript((t) => [...t, ...skillDebugMeta]);
 				}
-				setTranscript((t) => [...t, { kind: "user", text: line }]);
-				setActivityLine("Thinking…");
 				await runModelTurnRef.current(next, sidFinal);
 			})();
 		},

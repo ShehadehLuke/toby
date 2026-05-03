@@ -12,7 +12,7 @@ type AskUserQaPayload = {
 type BoxedStepPayload = {
 	readonly id: string;
 	readonly seq: number;
-	readonly variant: "prep" | "assistant" | "tool";
+	readonly variant: "prep" | "lifecycle" | "assistant" | "tool";
 	readonly header: string;
 	readonly body: string;
 	readonly toolBlockKey?: string;
@@ -84,6 +84,7 @@ export function deserializeTranscriptRow(row: {
 				p.id.length > 0 &&
 				typeof p.seq === "number" &&
 				(p.variant === "prep" ||
+					p.variant === "lifecycle" ||
 					p.variant === "assistant" ||
 					p.variant === "tool") &&
 				typeof p.header === "string" &&

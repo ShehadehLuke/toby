@@ -17,6 +17,19 @@ export type ChatEvent =
 			readonly detail: string;
 	  }
 	| {
+			/** Non–prompt-prep milestones (integration context, persistence, etc.). */
+			readonly type: "lifecycle_start";
+			readonly id: string;
+			readonly seq: number;
+			readonly header: string;
+	  }
+	| {
+			readonly type: "lifecycle_end";
+			readonly id: string;
+			readonly seq: number;
+			readonly detail: string;
+	  }
+	| {
 			readonly type: "assistant_segment_start";
 			readonly id: string;
 			readonly seq: number;

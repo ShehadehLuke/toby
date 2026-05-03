@@ -236,7 +236,27 @@ export async function chatWithTools(
 			providerOptions: providerOptions as never,
 		});
 
+		const modelRequestId = randomUUID();
+		if (onChatEvent) {
+			onChatEvent({
+				type: "lifecycle_start",
+				id: modelRequestId,
+				seq: nextSeq(),
+				header: "Sending request to model…",
+			});
+		}
+
+		let sawTextDelta = false;
 		for await (const delta of result.textStream) {
+			if (onChatEvent && !sawTextDelta) {
+				sawTextDelta = true;
+				onChatEvent({
+					type: "lifecycle_end",
+					id: modelRequestId,
+					seq: nextSeq(),
+					detail: "Streaming assistant output…",
+				});
+			}
 			if (onChatEvent) {
 				if (assistantSegmentId === null) {
 					assistantSegmentId = randomUUID();
@@ -255,6 +275,15 @@ export async function chatWithTools(
 				});
 			}
 			onAssistantTextDelta?.(delta);
+		}
+
+		if (onChatEvent && !sawTextDelta) {
+			onChatEvent({
+				type: "lifecycle_end",
+				id: modelRequestId,
+				seq: nextSeq(),
+				detail: "Model turn continued (tools or structured output).",
+			});
 		}
 
 		endAssistantSegment();
