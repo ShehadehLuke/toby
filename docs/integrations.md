@@ -27,6 +27,7 @@ Extends `Integration` with optional **capabilities** and **hooks**:
 | `mergeCredentialsPatch(values, previous)` | Return a `Partial<CredentialsFile>` fragment when saving; configure merges patches from all modules. |
 | `summarize?(options)` | Build `CoreMessage[]` (or return `empty`) for the shared `summarize` command. |
 | `chat?(options)` | Run the shared `chat` command: tool-calling AI for a user-supplied instruction (`ChatRunOptions`). |
+| `createChatTools?(params)` | Provide tools + action accumulator for the shared turn runner (`runSharedChatTurn` in `src/chat-pipeline/run-turn.ts`). |
 | `registerCommands?(program)` | Attach Commander subcommands (e.g. Gmail’s `gmail fetch`, `gmail organize`). |
 
 Types such as `IntegrationModule` and `IntegrationCapability` are exported from [`types.ts`](../src/integrations/types.ts). Import them from there when you need them in implementation code; the barrel [`index.ts`](../src/integrations/index.ts) exposes runtime registry functions.
@@ -46,7 +47,7 @@ Types such as `IntegrationModule` and `IntegrationCapability` are exported from 
 
 Each integration typically owns:
 
-- **`index.ts`** — exports `*IntegrationModule` constant wiring lifecycle, capabilities, credentials, `summarize`, optional `chat`, `registerCommands`, and tool validation used by `testConnection`.
+- **`index.ts`** — exports `*IntegrationModule` constant wiring lifecycle, capabilities, credentials, `summarize`, optional `chat`, `createChatTools`, `registerCommands`, and tool validation used by `testConnection`. Chat turn execution is delegated to the shared `runSharedChatTurn` from `src/chat-pipeline/run-turn.ts` (no per-integration `chat-turn.ts` needed).
 - **`client.ts`** — HTTP/API calls, typed DTOs.
 - **`auth.ts`** (if OAuth) — OAuth helper used by `connect`.
 - **`tools.ts`** — AI SDK `tool()` definitions and context types (module-private unless needed elsewhere).

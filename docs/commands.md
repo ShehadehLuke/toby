@@ -45,3 +45,14 @@ Examples:
 ## Other shared commands
 
 The CLI also includes shared commands such as `connect`, `disconnect`, `status`, `summarize`, `organize`, `chat`, `sessions`, and `upgrade`.
+
+## Default command
+
+When no subcommand is provided, `toby` defaults to `chat`. This means:
+
+- `toby` → `toby chat`
+- `toby "summarize unread"` → `toby chat "summarize unread"`
+- `toby gmail --dry-run "archive promos"` → `toby chat gmail --dry-run "archive promos"`
+- `toby --no-tui "quick question"` → `toby chat --no-tui "quick question"`
+
+All chat flags (`--persona`, `--integration`, `--no-tui`, `--debug`, `--dry-run`) and positional arguments work the same way with or without the `chat` keyword. Other subcommands (`status`, `connect`, `organize`, etc.) are unaffected — they are matched first before the default applies. Root-level flags like `--help` and `--version` also continue to work as expected.

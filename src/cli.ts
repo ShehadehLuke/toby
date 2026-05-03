@@ -35,7 +35,20 @@ registerOrganizeCommand(program);
 registerUpgradeCommand(program);
 registerChatCommand(program);
 
-program.parse();
+const rawArgs = process.argv.slice(2);
+const subcommandNames = new Set(program.commands.map((c) => c.name()));
+const first = rawArgs[0];
+const isRootOption =
+	first === "--help" ||
+	first === "-h" ||
+	first === "--version" ||
+	first === "-V";
+const adjustedArgs =
+	!first || (!subcommandNames.has(first) && !isRootOption)
+		? ["chat", ...rawArgs]
+		: rawArgs;
+
+program.parse(adjustedArgs, { from: "user" });
 
 function resolveCliVersion(): string {
 	const envVersion = process.env.TOBY_VERSION?.trim();

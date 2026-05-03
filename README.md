@@ -67,7 +67,7 @@ bun run dev -- --help
 
 ## Core commands
 
-- `toby chat` - launch the chat interface
+- `toby chat` - launch the chat interface (default command: `toby` with no subcommand runs `toby chat`)
 - `toby config` - open the interactive configure UI
 - `toby config backup` - create an encrypted backup of config + credentials
 - `toby config restore <file>` - restore from a backup file

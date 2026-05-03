@@ -15,6 +15,7 @@ src/
     todoist/
   config/                # Read/write ~/.toby/config.json and credentials.json
   ai/                    # Shared AI helpers (chat, providers) — not integration-specific
+  chat-pipeline/         # Shared turn runner, tool cache, chat event types
   personas/              # Named personas (model + instructions) used by AI flows
   ui/configure/          # Ink/React TUI for `toby configure`
   ui/chat/               # Ink TUI for `toby chat` when no prompt is passed on the CLI
@@ -29,10 +30,10 @@ src/
 
 ## Runtime flow
 
-1. **`src/cli.ts`** constructs the Commander program, registers built-in commands, then calls `registerCommands` on each loaded `IntegrationModule` (if present).
+1. **`src/cli.ts`** constructs the Commander program, registers built-in commands, then calls `registerCommands` on each loaded `IntegrationModule` (if present). When no subcommand is provided on the command line, `chat` is used as the default (implemented by prepending `"chat"` to the args before parsing if the first arg is not a known subcommand or root option like `--help`/`--version`).
 2. **Connect / disconnect / status** use [`getIntegration`](../src/integrations/index.ts) or [`getIntegrations`](../src/integrations/index.ts) to invoke lifecycle and health checks on the right module.
 3. **`summarize`** resolves a module by name, checks the `summarize` capability, calls `module.summarize(...)`, then runs the AI SDK with returned messages.
-4. **`chat`** (`src/commands/chat.ts`) resolves one or more connected integrations (positional / `--integration` / default all), then runs an Ink multi-turn session or `--no-tui` console flow; multi-integration turns merge tool maps in [`src/ui/chat/run-turn.ts`](../src/ui/chat/run-turn.ts) (see [`src/ai/chat.ts`](../src/ai/chat.ts) and [`src/ai/ask-user-tool.ts`](../src/ai/ask-user-tool.ts)).
+4. **`chat`** (`src/commands/chat.ts`) resolves one or more connected integrations (positional / `--integration` / default all), then runs an Ink multi-turn session or `--no-tui` console flow; turn execution (tool merging, prompt caching, abort signal) is handled by [`src/chat-pipeline/run-turn.ts`](../src/chat-pipeline/run-turn.ts) (see [`src/ai/chat.ts`](../src/ai/chat.ts) and [`src/ai/ask-user-tool.ts`](../src/ai/ask-user-tool.ts)).
 5. **`config`** is the primary settings command. `toby config` launches the configure UI, while `toby config backup` and `toby config restore` manage encrypted config backups. `toby configure` remains as a compatibility alias.
 
 ## Local data

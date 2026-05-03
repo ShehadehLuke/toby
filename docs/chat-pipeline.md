@@ -24,8 +24,8 @@ Key files:
 - `src/ai/pretreatment.ts`: optional fast pretreatment (`generateText` + structured output) before the main turn; see **Pretreatment** below.
 - `src/skills/index.ts`: loads optional local skills from `~/.toby/skills/<name>/SKILL.md` (frontmatter `name` + `description`) for pretreatment selection and injection; see **Local skills** below.
 - `src/ui/chat/prepare-messages.ts`: initial message construction for a session.
-- `src/ui/chat/run-turn.ts`: integration selection and model execution.
-- `src/ai/chat.ts`: shared wrapper around AI SDK `streamText` / `generateText`.
+- `src/chat-pipeline/run-turn.ts`: shared integration turn runner (`runIntegrationChatTurn`, `runSharedChatTurn`). `src/ui/chat/run-turn.ts` re-exports from this module.
+- `src/ai/chat.ts`: shared wrapper around AI SDK `streamText` / `generateText`, tool cache injection, lifecycle hooks, and abort signal propagation.
 
 ## Message construction (stable prefix vs dynamic content)
 
@@ -74,12 +74,12 @@ To author a new skill from chat, the global tool **`createLocalSkill`** (see [`s
 For each user submission:
 
 1. `ChatSessionApp` may run pretreatment, then appends a `role: "user"` message (verbatim + optional spec block) to the in-memory history.
-2. It calls `runIntegrationChatTurn(...)` with the full `messages` array.
-3. `runIntegrationChatTurn` selects integration(s) and tools, then calls `chatWithTools(...)`.
-4. `chatWithTools` uses:
+2. It calls `runIntegrationChatTurn(...)` with the full `messages` array (wiring an `AbortSignal` so the user can cancel with Escape).
+3. `runIntegrationChatTurn` resolves integration modules by name, then delegates to `runSharedChatTurn` which merges their tools, adds global tools, applies prompt caching, and calls `chatWithTools(...)`.
+4. `chatWithTools` applies `injectToolCache` (read-only tool result cache) then `injectToolLifecycleHooks` (events, callbacks, abort checks), and uses:
   - `streamText(...)` when the Ink UI wants incremental tokens, or
   - `generateText(...)` in non-streaming contexts.
-5. Tool lifecycle hooks (`onToolCallStart` / `onToolCallComplete`) are implemented by wrapping each tool’s `execute` in `[src/ai/chat.ts](../src/ai/chat.ts)`. Optional `**onChatEvent`** emits UI-agnostic `[ChatEvent](../src/chat-pipeline/chat-events.ts)` values (assistant segments at tool boundaries, tool start/complete, `prep_*`, `lifecycle_*` milestones, etc.). The Ink session maps those events to transcript rows via `[src/ui/chat/chat-event-reducer.ts](../src/ui/chat/chat-event-reducer.ts)` (prep and lifecycle render as boxed pipeline steps in the TUI transcript).
+5. Tool lifecycle hooks (`onToolCallStart` / `onToolCallComplete`) and abort-signal checks are implemented by wrapping each tool’s `execute` in `[src/ai/chat.ts](../src/ai/chat.ts)`. The `abortSignal` on `ChatWithToolsOptions` is propagated to `streamText`/`generateText` and checked before each tool execution. Optional `**onChatEvent**` emits UI-agnostic `[ChatEvent](../src/chat-pipeline/chat-events.ts)` values (assistant segments at tool boundaries, tool start/complete, `prep_*`, `lifecycle_*` milestones, etc.). The Ink session maps those events to transcript rows via `[src/ui/chat/chat-event-reducer.ts](../src/ui/chat/chat-event-reducer.ts)` (prep and lifecycle render as boxed pipeline steps in the TUI transcript).
 6. The SDK returns `response.messages` (assistant + tool result messages), which are appended to history for the next turn.
 
 ### Tool result cache (read-only tools)
@@ -94,12 +94,20 @@ For each user submission:
 Implementation paths:
 
 - Cache implementation: `src/chat-pipeline/tool-result-cache.ts`
-- Cache lookup/store hook: `src/ai/chat.ts` (inside `injectToolLifecycleHooks`)
+- Cache lookup/store hook: `src/ai/chat.ts` (`injectToolCache` wraps read-only tools; `injectToolLifecycleHooks` emits cache-hit events)
 - UI marker: tool transcript rows append `[cache]` when a cached result is used
 
 To clear cached tool results in chat, run:
 
 - `/clear-tool-cache`
+
+### Abort signal
+
+`ChatWithToolsOptions` accepts an optional `abortSignal` (standard `AbortSignal`). When provided:
+
+- The signal is forwarded to `streamText` / `generateText`, so the provider request can be cancelled mid-flight.
+- Before each tool execution, the signal is checked; if already aborted the tool throws instead of running.
+- The Ink TUI wires an `AbortController` per turn and aborts it when the user presses **Escape** during a loading state.
 
 ## OpenAI prompt caching configuration (current)
 
