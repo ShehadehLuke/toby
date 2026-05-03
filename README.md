@@ -28,6 +28,33 @@ Toby combines:
 - Personas for filtering responses through the lens of a particular interest
 - Skills for describing how to perform certain tasks or to interpret certain subjects.
 
+## Chat architecture overview
+
+```mermaid
+flowchart TD
+    U[User Input] --> C[toby chat command]
+    C --> P[Chat Pipeline Orchestrator]
+
+    P --> CTX[Load conversation + integration context]
+    CTX --> SEL[Select active persona + relevant skills]
+
+    SEL --> PER[Persona layer]
+    SEL --> SK[Skill layer]
+
+    PER -->|adjusts framing and priorities| SYS[System prompt assembly]
+    SK -->|injects task instructions and constraints| SYS
+
+    SYS --> LLM[LLM inference]
+    LLM --> TOOLS{Tool call needed?}
+
+    TOOLS -->|Yes| INT[Integration/tool execution]
+    INT --> CACHE[Tool result cache]
+    CACHE --> P
+
+    TOOLS -->|No| OUT[Assistant response]
+    P --> OUT
+```
+
 ## Quick start
 
 Use Bun-based scripts from the repo root:
