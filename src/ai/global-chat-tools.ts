@@ -39,7 +39,7 @@ skillMarkdown requirements:
 
 recommendedFolderName must be a single path segment: lowercase letters, digits, and hyphens only (kebab-case).`;
 
-export type GlobalChatToolsContext = {
+type GlobalChatToolsContext = {
 	readonly dryRun: boolean;
 	readonly persona: Persona;
 	/** Mutated on successful writes (and dry-run previews). */

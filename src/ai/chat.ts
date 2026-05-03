@@ -20,7 +20,7 @@ import type { Persona } from "../config/index";
 
 export type CoreMessage = ModelMessage;
 
-export type ToolCallLifecycleStart = {
+type ToolCallLifecycleStart = {
 	readonly toolName: string;
 	readonly blockKey: string;
 	readonly args: Record<string, unknown>;
@@ -52,6 +52,12 @@ export type ChatWithToolsOptions = {
 	readonly onChatEvent?: ChatEventSink;
 	/** Provider-specific options passed through to the model call. */
 	readonly providerOptions?: unknown;
+	/**
+	 * Optional abort signal for cancelling the model turn mid-flight.
+	 * Propagated to `streamText` / `generateText` and checked during
+	 * tool execution to abort long-running tools.
+	 */
+	readonly abortSignal?: AbortSignal;
 };
 
 type StreamToolContext = {
@@ -60,6 +66,53 @@ type StreamToolContext = {
 	readonly nextSeq: () => number;
 };
 
+/**
+ * Wraps read-only tools with an in-memory cache. When a cache hit occurs,
+ * the original `execute` is skipped entirely. Write tools pass through unchanged.
+ */
+function injectToolCache(tools: Record<string, Tool>): Record<string, Tool> {
+	let needsWrapping = false;
+	for (const name of Object.keys(tools)) {
+		if (isReadOnlyChatTool(name) && tools[name]?.execute) {
+			needsWrapping = true;
+			break;
+		}
+	}
+	if (!needsWrapping) {
+		return tools;
+	}
+
+	const wrapped: Record<string, Tool> = {};
+	for (const [name, tool] of Object.entries(tools)) {
+		const execute = tool.execute;
+		if (!execute || !isReadOnlyChatTool(name)) {
+			wrapped[name] = tool;
+			continue;
+		}
+		wrapped[name] = {
+			...tool,
+			execute: async (input, toolOptions) => {
+				const args =
+					input && typeof input === "object" && !Array.isArray(input)
+						? (input as Record<string, unknown>)
+						: {};
+				const cached = getCachedToolResult(name, args);
+				if (cached.hit) {
+					return cached.value;
+				}
+				const result = await execute(input as never, toolOptions as never);
+				setCachedToolResult(name, args, result);
+				return result;
+			},
+		};
+	}
+	return wrapped;
+}
+
+/**
+ * Wraps all tools with lifecycle hooks: event emission, start/complete callbacks,
+ * and abort-signal checks. Returns tools unchanged when no hooks or events are needed.
+ */
 function injectToolLifecycleHooks(
 	tools: Record<string, Tool>,
 	options: ChatWithToolsOptions | undefined,
@@ -67,6 +120,7 @@ function injectToolLifecycleHooks(
 ): Record<string, Tool> {
 	const onToolCallStart = options?.onToolCallStart;
 	const onToolCallComplete = options?.onToolCallComplete;
+	const abortSignal = options?.abortSignal;
 	if (!onToolCallStart && !onToolCallComplete && !streamCtx?.emit) {
 		return tools;
 	}
@@ -85,7 +139,11 @@ function injectToolLifecycleHooks(
 					input && typeof input === "object" && !Array.isArray(input)
 						? (input as Record<string, unknown>)
 						: {};
+				if (abortSignal?.aborted) {
+					throw new Error(`Tool "${name}" aborted before execution`);
+				}
 				const allowCache = isReadOnlyChatTool(name);
+				const cacheHit = allowCache && getCachedToolResult(name, args).hit;
 				streamCtx?.endAssistantSegment();
 				streamCtx?.emit?.({
 					type: "tool_call_start",
@@ -95,33 +153,28 @@ function injectToolLifecycleHooks(
 					args,
 				});
 				onToolCallStart?.({ toolName: name, blockKey, args });
-				if (allowCache) {
-					const cached = getCachedToolResult(name, args);
-					if (cached.hit) {
-						streamCtx?.emit?.({
-							type: "tool_call_complete",
-							blockKey,
-							seq: streamCtx.nextSeq(),
-							toolName: name,
-							args,
-							result: cached.value,
-							cacheHit: true,
-						});
-						onToolCallComplete?.({
-							toolName: name,
-							blockKey,
-							args,
-							result: cached.value,
-							cacheHit: true,
-						});
-						return cached.value;
-					}
+				if (cacheHit) {
+					const cachedValue = getCachedToolResult(name, args).value;
+					streamCtx?.emit?.({
+						type: "tool_call_complete",
+						blockKey,
+						seq: streamCtx.nextSeq(),
+						toolName: name,
+						args,
+						result: cachedValue,
+						cacheHit: true,
+					});
+					onToolCallComplete?.({
+						toolName: name,
+						blockKey,
+						args,
+						result: cachedValue,
+						cacheHit: true,
+					});
+					return cachedValue;
 				}
 				try {
 					const result = await execute(input as never, toolOptions as never);
-					if (allowCache) {
-						setCachedToolResult(name, args, result);
-					}
 					streamCtx?.emit?.({
 						type: "tool_call_complete",
 						blockKey,
@@ -200,6 +253,7 @@ export async function chatWithTools(
 	const onAssistantTextDelta = options?.onAssistantTextDelta;
 	const onChatEvent = options?.onChatEvent;
 	const providerOptions = options?.providerOptions as unknown;
+	const abortSignal = options?.abortSignal;
 
 	let seq = 0;
 	const nextSeq = () => {
@@ -224,7 +278,14 @@ export async function chatWithTools(
 			? { endAssistantSegment, emit: onChatEvent, nextSeq }
 			: undefined;
 
-	const toolsForModel = injectToolLifecycleHooks(tools, options, streamCtx);
+	// Apply cache first (so cached reads skip execute entirely),
+	// then wrap with lifecycle hooks (events, callbacks, abort).
+	const cachedTools = injectToolCache(tools);
+	const toolsForModel = injectToolLifecycleHooks(
+		cachedTools,
+		options,
+		streamCtx,
+	);
 
 	/** Need streamText when either the legacy delta callback or chat pipeline events are used. */
 	if (onAssistantTextDelta || onChatEvent) {
@@ -234,6 +295,7 @@ export async function chatWithTools(
 			tools: toolsForModel,
 			stopWhen: stepCountIs(12),
 			providerOptions: providerOptions as never,
+			abortSignal,
 		});
 
 		const modelRequestId = randomUUID();
@@ -324,6 +386,7 @@ export async function chatWithTools(
 		tools: toolsForModel,
 		stopWhen: stepCountIs(12),
 		providerOptions: providerOptions as never,
+		abortSignal,
 	});
 
 	return {

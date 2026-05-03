@@ -417,6 +417,8 @@ export function ChatSessionApp({
 			setStreamingAssistantHeader("Toby");
 			assistantStreamBufRef.current = "";
 			assistantSegmentCommittedRef.current = false;
+			const turnAbort = new AbortController();
+			ongoingPretreatAbortRef.current = turnAbort;
 			let activeToolCalls = 0;
 			const nextLocalSeq = () => {
 				transcriptLocalSeqRef.current += 1;
@@ -467,6 +469,7 @@ export function ChatSessionApp({
 					askUser: askUserHandler,
 					chatWithToolsOptions: {
 						onChatEvent: emitChatEvent,
+						abortSignal: turnAbort.signal,
 						onToolCallStart: ({ toolName }) => {
 							activeToolCalls += 1;
 							setActivityLine(formatToolStatusLine(toolName));
@@ -1399,6 +1402,10 @@ export function ChatSessionApp({
 			}
 
 			if (snapRef.current.loading || !snapRef.current.messages) {
+				if (key.escape && snapRef.current.loading) {
+					ongoingPretreatAbortRef.current?.abort();
+					setActivityLine("Turn cancelled.");
+				}
 				return;
 			}
 
