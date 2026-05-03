@@ -1,6 +1,7 @@
 import { TodoistApi } from "@doist/todoist-sdk";
 import type { AddTaskArgs, Task, UpdateTaskArgs } from "@doist/todoist-sdk";
 import { getTodoistCredentials } from "../../config/index";
+import { withRetry } from "../rate-limit";
 
 export interface TodoistTask {
 	id: string;
@@ -246,7 +247,7 @@ export async function createTask(
 		...(input.priority !== undefined ? { priority: input.priority } : {}),
 	};
 
-	const created = await api.addTask(body as AddTaskArgs);
+	const created = await withRetry(() => api.addTask(body as AddTaskArgs));
 	const id = created.id;
 	const url = created.url ?? "";
 	const content = created.content ?? input.content;
@@ -255,7 +256,7 @@ export async function createTask(
 
 export async function completeTask(taskId: string): Promise<void> {
 	const api = getTodoistApiClient();
-	await api.closeTask(taskId);
+	await withRetry(() => api.closeTask(taskId));
 }
 
 export async function updateTask(
@@ -280,7 +281,7 @@ export async function updateTask(
 	} else if (updates.dueString !== undefined && updates.dueString !== "") {
 		requestBody.dueString = updates.dueString;
 	}
-	await api.updateTask(taskId, requestBody as UpdateTaskArgs);
+	await withRetry(() => api.updateTask(taskId, requestBody as UpdateTaskArgs));
 }
 
 function getTodoistApiClient(): TodoistApi {

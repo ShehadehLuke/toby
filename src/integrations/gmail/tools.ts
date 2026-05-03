@@ -1,9 +1,11 @@
 import { tool } from "ai";
 import { z } from "zod";
 import {
+	type BatchModifyOperationResult,
 	type GmailMessage,
 	applyLabels,
 	archiveEmail,
+	batchModifyMessages,
 	ensureLabels,
 	fetchUnreadInbox,
 	fetchUnreadMetadataByMessageIds,
@@ -147,9 +149,137 @@ export function createGmailTools(ctx: EmailContext) {
 			},
 		}),
 
+		batchModifyMessages: tool({
+			description: `Batch-modify messages: apply/remove labels, archive, or mark-read for multiple messages in ONE call. Accepts an array of operations — each operation specifies target messageIds and which labels to add/remove. This is far more efficient than calling single-message tools in a loop. ALWAYS prefer this over archiveEmailById/markAsReadById/applyMultipleLabelsByMessageId when acting on 2+ messages.
+
+Examples:
+- Archive messages m1,m2: {operations:[{messageIds:["m1","m2"], removeLabelNames:["INBOX"]}]}
+- Label m3 as "Finance" and mark read: {operations:[{messageIds:["m3"], addLabelNames:["Finance"], removeLabelNames:["UNREAD"]}]}
+- Different labels per group: {operations:[{messageIds:["m1","m2"], addLabelNames:["Finance"]},{messageIds:["m3"], addLabelNames:["Travel"]}]}
+- Archive some and label others: {operations:[{messageIds:["m1","m2"], removeLabelNames:["INBOX"]},{messageIds:["m3","m4"], addLabelNames:["Receipts"], removeLabelNames:["UNREAD"]}]}`,
+			inputSchema: z.object({
+				operations: z
+					.array(
+						z.object({
+							messageIds: z
+								.array(z.string())
+								.min(1)
+								.max(1000)
+								.describe("Target message IDs for this operation"),
+							addLabelNames: z
+								.array(z.string())
+								.optional()
+								.describe(
+									'Label names to add (created if needed). Use "INBOX" or "UNREAD" with caution — they are system labels.',
+								),
+							removeLabelNames: z
+								.array(z.string())
+								.optional()
+								.describe(
+									'Label names to remove. Use "INBOX" to archive, "UNREAD" to mark as read.',
+								),
+						}),
+					)
+					.min(1)
+					.max(100)
+					.describe(
+						"Array of {messageIds, addLabelNames?, removeLabelNames?} groups. Group messages that share the same action into one operation.",
+					),
+			}),
+			execute: async ({ operations }) => {
+				// Collect all unique label names across all operations.
+				const allLabelNames = new Set<string>();
+				for (const op of operations) {
+					for (const name of op.addLabelNames ?? []) {
+						// Skip system labels that don't need resolution.
+						if (!isGmailSystemLabel(name)) {
+							allLabelNames.add(name);
+						}
+					}
+					for (const name of op.removeLabelNames ?? []) {
+						if (!isGmailSystemLabel(name)) {
+							allLabelNames.add(name);
+						}
+					}
+				}
+
+				if (ctx.dryRun) {
+					const summaries = operations.map((op) => {
+						const parts: string[] = [];
+						if (op.addLabelNames?.length) {
+							parts.push(`+[${op.addLabelNames.join(", ")}]`);
+						}
+						if (op.removeLabelNames?.length) {
+							parts.push(`-[${op.removeLabelNames.join(", ")}]`);
+						}
+						return `${op.messageIds.length} message(s) ${parts.join(" ")}`;
+					});
+					const msg = `[DRY RUN] Would batch modify: ${summaries.join("; ")}`;
+					ctx.appliedActions.push(msg);
+					return { dryRun: true, message: msg };
+				}
+
+				// Resolve label names → IDs.
+				const labelMap =
+					allLabelNames.size > 0 ? await ensureLabels([...allLabelNames]) : {};
+
+				// Map operations from label names to label IDs.
+				const idOps = operations.map((op) => ({
+					messageIds: [...op.messageIds],
+					addLabelIds: (op.addLabelNames ?? [])
+						.map((name) => resolveLabelName(name, labelMap))
+						.filter(Boolean) as string[],
+					removeLabelIds: (op.removeLabelNames ?? [])
+						.map((name) => resolveLabelName(name, labelMap))
+						.filter(Boolean) as string[],
+				}));
+
+				const results = await batchModifyMessages(idOps);
+
+				// Build human-readable summary and push to appliedActions.
+				const totalSucceeded = results.reduce(
+					(sum, r) => sum + r.succeeded.length,
+					0,
+				);
+				const totalFailed = results.reduce(
+					(sum, r) => sum + r.failed.length,
+					0,
+				);
+
+				if (totalSucceeded > 0) {
+					const parts: string[] = [];
+					for (const op of operations) {
+						const actionParts: string[] = [];
+						if (op.addLabelNames?.length) {
+							actionParts.push(`+${op.addLabelNames.join(",")}`);
+						}
+						if (op.removeLabelNames?.length) {
+							actionParts.push(`-${op.removeLabelNames.join(",")}`);
+						}
+						parts.push(
+							`${actionParts.join(" ")} on ${op.messageIds.length} msg(s)`,
+						);
+					}
+					const msg = `Batch: ${parts.join("; ")} — ${totalSucceeded} succeeded${totalFailed > 0 ? `, ${totalFailed} failed` : ""}`;
+					ctx.appliedActions.push(msg);
+				}
+
+				return {
+					totalSucceeded,
+					totalFailed,
+					results: results.map((r) => ({
+						succeeded: r.succeeded.length,
+						failed: r.failed.length,
+						addLabelIds: r.addLabelIds,
+						removeLabelIds: r.removeLabelIds,
+					})),
+				};
+			},
+		}),
+
 		archiveEmailById: tool({
 			description:
-				"Archive a message by id (removes INBOX label). Use when you have a concrete messageId from getInboxUnreadOverview or getUnreadEmailMetadataBatch.",
+				"Archive a single message by id (removes INBOX label). For 2+ messages, use batchModifyMessages with removeLabelNames:['INBOX'] instead — it is far more efficient.",
 			inputSchema: z.object({
 				messageId: z.string().describe("Gmail message id"),
 			}),
@@ -173,7 +303,7 @@ export function createGmailTools(ctx: EmailContext) {
 
 		markAsReadById: tool({
 			description:
-				"Mark a message as read by id (removes UNREAD). Use when you have a concrete messageId.",
+				"Mark a single message as read by id (removes UNREAD). For 2+ messages, use batchModifyMessages with removeLabelNames:['UNREAD'] instead — it is far more efficient.",
 			inputSchema: z.object({
 				messageId: z.string().describe("Gmail message id"),
 			}),
@@ -197,7 +327,7 @@ export function createGmailTools(ctx: EmailContext) {
 
 		applyMultipleLabelsByMessageId: tool({
 			description:
-				"Create labels if needed and apply them to a message by id. Use when you have a concrete messageId.",
+				"Create labels if needed and apply them to a single message by id. For 2+ messages, use batchModifyMessages instead — it is far more efficient.",
 			inputSchema: z.object({
 				messageId: z.string().describe("Gmail message id"),
 				labelNames: z.array(z.string()).describe("Label names to apply"),
@@ -398,4 +528,41 @@ export function createGmailTools(ctx: EmailContext) {
 			},
 		}),
 	};
+}
+
+/** Gmail system labels that are referenced by their exact uppercase name, not user labels. */
+const GMAIL_SYSTEM_LABELS = new Set([
+	"INBOX",
+	"UNREAD",
+	"STARRED",
+	"IMPORTANT",
+	"SENT",
+	"DRAFT",
+	"TRASH",
+	"SPAM",
+	"CHAT",
+	"CATEGORY_PERSONAL",
+	"CATEGORY_SOCIAL",
+	"CATEGORY_PROMOTIONS",
+	"CATEGORY_UPDATES",
+	"CATEGORY_FORUMS",
+]);
+
+function isGmailSystemLabel(name: string): boolean {
+	return GMAIL_SYSTEM_LABELS.has(name.toUpperCase());
+}
+
+/**
+ * Resolve a label name to its Gmail ID.
+ * System labels (INBOX, UNREAD, etc.) are returned as-is (their name = their ID).
+ * User labels are looked up in the labelMap from ensureLabels.
+ */
+function resolveLabelName(
+	name: string,
+	labelMap: Record<string, string>,
+): string | undefined {
+	if (isGmailSystemLabel(name)) {
+		return name.toUpperCase();
+	}
+	return labelMap[name.toLowerCase()];
 }

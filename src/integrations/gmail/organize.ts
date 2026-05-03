@@ -15,6 +15,7 @@ const MUTATING_GMAIL_TOOLS = new Set([
 	"archiveEmailById",
 	"markAsReadById",
 	"applyMultipleLabelsByMessageId",
+	"batchModifyMessages",
 ]);
 
 export async function organizeGmailInbox(params: {

@@ -4,6 +4,7 @@ import {
 	readConfig,
 	writeConfig,
 } from "../../config/index";
+import { type RateLimitConfig, withRateLimit, withRetry } from "../rate-limit";
 
 interface GmailIntegrationTokens {
 	accessToken: string;
@@ -82,6 +83,21 @@ export interface GmailMessage {
 	date: string;
 	snippet: string;
 }
+
+// Rate-limit configs for Gmail API.
+// Per-user limit: 15 000 quota units / min ≈ 250 / sec.
+// Concurrent cap: 50 parallel requests per mailbox.
+const GMAIL_READ_LIMIT: RateLimitConfig = {
+	maxConcurrent: 10,
+	minDelayMs: 50,
+};
+const GMAIL_MUTATE_LIMIT: RateLimitConfig = {
+	maxConcurrent: 5,
+	minDelayMs: 100,
+};
+
+/** Maximum message IDs per batchModify call (Gmail API limit). */
+const BATCH_MODIFY_MAX_IDS = 1000;
 
 /** One page of message ids from Gmail list (no per-message fetches). */
 interface InboxListPage {
@@ -175,7 +191,7 @@ export async function listInboxPage(
 	};
 }
 
-/** Metadata headers + snippet for specific message ids (bounded batch). */
+/** Metadata headers + snippet for specific message ids (bounded, rate-limited batch). */
 export async function fetchUnreadMetadataByMessageIds(
 	ids: readonly string[],
 	maxParallel = 25,
@@ -189,7 +205,11 @@ export async function fetchUnreadMetadataByMessageIds(
 	const gmail = google.gmail({ version: "v1", auth });
 
 	const results = await Promise.all(
-		unique.map((id) => fetchOneMessageMetadata(gmail, id)),
+		unique.map((id) =>
+			withRateLimit(GMAIL_READ_LIMIT, () =>
+				withRetry(() => fetchOneMessageMetadata(gmail, id)),
+			),
+		),
 	);
 
 	return results.filter((message): message is GmailMessage => message !== null);
@@ -207,7 +227,11 @@ export async function fetchUnreadInbox(
 	const gmail = google.gmail({ version: "v1", auth });
 
 	const results = await Promise.all(
-		page.messageSummaries.map((m) => fetchOneMessageMetadata(gmail, m.id)),
+		page.messageSummaries.map((m) =>
+			withRateLimit(GMAIL_READ_LIMIT, () =>
+				withRetry(() => fetchOneMessageMetadata(gmail, m.id)),
+			),
+		),
 	);
 
 	return results.filter((message): message is GmailMessage => message !== null);
@@ -219,7 +243,9 @@ export async function ensureLabels(
 	const auth = getAuthenticatedGmailClient();
 	const gmail = google.gmail({ version: "v1", auth });
 
-	const existing = await gmail.users.labels.list({ userId: "me" });
+	const existing = await withRetry(() =>
+		gmail.users.labels.list({ userId: "me" }),
+	);
 	const labelMap: Record<string, string> = {};
 	for (const label of existing.data.labels ?? []) {
 		if (label.name && label.id) {
@@ -230,14 +256,16 @@ export async function ensureLabels(
 	for (const name of labelNames) {
 		const key = name.toLowerCase();
 		if (!labelMap[key]) {
-			const created = await gmail.users.labels.create({
-				userId: "me",
-				requestBody: {
-					name,
-					labelListVisibility: "labelShow",
-					messageListVisibility: "show",
-				},
-			});
+			const created = await withRetry(() =>
+				gmail.users.labels.create({
+					userId: "me",
+					requestBody: {
+						name,
+						labelListVisibility: "labelShow",
+						messageListVisibility: "show",
+					},
+				}),
+			);
 			if (created.data.id) {
 				labelMap[key] = created.data.id;
 			}
@@ -254,35 +282,175 @@ export async function applyLabels(
 	const auth = getAuthenticatedGmailClient();
 	const gmail = google.gmail({ version: "v1", auth });
 
-	await gmail.users.messages.modify({
-		userId: "me",
-		id: messageId,
-		requestBody: {
-			addLabelIds: labelIds,
-		},
-	});
+	await withRetry(() =>
+		gmail.users.messages.modify({
+			userId: "me",
+			id: messageId,
+			requestBody: {
+				addLabelIds: labelIds,
+			},
+		}),
+	);
 }
 
 export async function markEmailAsRead(messageId: string): Promise<void> {
 	const auth = getAuthenticatedGmailClient();
 	const gmail = google.gmail({ version: "v1", auth });
 
-	await gmail.users.messages.modify({
-		userId: "me",
-		id: messageId,
-		requestBody: { removeLabelIds: ["UNREAD"] },
-	});
+	await withRetry(() =>
+		gmail.users.messages.modify({
+			userId: "me",
+			id: messageId,
+			requestBody: { removeLabelIds: ["UNREAD"] },
+		}),
+	);
 }
 
 export async function archiveEmail(messageId: string): Promise<void> {
 	const auth = getAuthenticatedGmailClient();
 	const gmail = google.gmail({ version: "v1", auth });
 
-	await gmail.users.messages.modify({
-		userId: "me",
-		id: messageId,
-		requestBody: { removeLabelIds: ["INBOX"] },
-	});
+	await withRetry(() =>
+		gmail.users.messages.modify({
+			userId: "me",
+			id: messageId,
+			requestBody: { removeLabelIds: ["INBOX"] },
+		}),
+	);
+}
+
+/**
+ * Result of a single operation within a batchModifyMessages call.
+ */
+export interface BatchModifyOperationResult {
+	/** The operation that was executed (label names resolved to IDs). */
+	readonly addLabelIds: string[];
+	readonly removeLabelIds: string[];
+	/** Message IDs that were successfully modified. */
+	readonly succeeded: string[];
+	/** Message IDs that failed (e.g. not found). */
+	readonly failed: string[];
+}
+
+/**
+ * Batch-modify labels on many messages at once using the Gmail batchModify API.
+ *
+ * Each operation specifies a set of messageIds and labels to add/remove.
+ * Operations that share the same (addLabelIds, removeLabelIds) signature are
+ * merged internally so fewer API calls are made.
+ *
+ * Each batchModify call costs 50 quota units (vs 5 per individual messages.modify),
+ * but handles up to 1 000 IDs per call — dramatically cheaper per message.
+ */
+export async function batchModifyMessages(
+	operations: ReadonlyArray<{
+		readonly messageIds: readonly string[];
+		readonly addLabelIds?: readonly string[];
+		readonly removeLabelIds?: readonly string[];
+	}>,
+): Promise<BatchModifyOperationResult[]> {
+	const auth = getAuthenticatedGmailClient();
+	const gmail = google.gmail({ version: "v1", auth });
+
+	// Merge operations that share the same (add, remove) label signature.
+	const merged = mergeOperations(operations);
+
+	const results: BatchModifyOperationResult[] = [];
+
+	for (const op of merged) {
+		const idChunks = chunkArray(
+			[...new Set(op.messageIds)].filter(Boolean),
+			BATCH_MODIFY_MAX_IDS,
+		);
+
+		for (const chunk of idChunks) {
+			try {
+				await withRateLimit(GMAIL_MUTATE_LIMIT, () =>
+					withRetry(() =>
+						gmail.users.messages.batchModify({
+							userId: "me",
+							requestBody: {
+								ids: chunk,
+								addLabelIds:
+									op.addLabelIds.length > 0 ? [...op.addLabelIds] : undefined,
+								removeLabelIds:
+									op.removeLabelIds.length > 0
+										? [...op.removeLabelIds]
+										: undefined,
+							},
+						}),
+					),
+				);
+				results.push({
+					addLabelIds: [...op.addLabelIds],
+					removeLabelIds: [...op.removeLabelIds],
+					succeeded: chunk,
+					failed: [],
+				});
+			} catch {
+				// On failure, report all IDs in this chunk as failed.
+				results.push({
+					addLabelIds: [...op.addLabelIds],
+					removeLabelIds: [...op.removeLabelIds],
+					succeeded: [],
+					failed: chunk,
+				});
+			}
+		}
+	}
+
+	return results;
+}
+
+/** Group operations that share the same add/remove label signature and merge their IDs. */
+function mergeOperations(
+	operations: ReadonlyArray<{
+		readonly messageIds: readonly string[];
+		readonly addLabelIds?: readonly string[];
+		readonly removeLabelIds?: readonly string[];
+	}>,
+): Array<{
+	messageIds: string[];
+	addLabelIds: string[];
+	removeLabelIds: string[];
+}> {
+	const map = new Map<
+		string,
+		{ messageIds: Set<string>; addLabelIds: string[]; removeLabelIds: string[] }
+	>();
+
+	for (const op of operations) {
+		const add = [...(op.addLabelIds ?? [])].sort();
+		const remove = [...(op.removeLabelIds ?? [])].sort();
+		const key = `+${add.join(",")}|-${remove.join(",")}`;
+
+		let entry = map.get(key);
+		if (!entry) {
+			entry = {
+				messageIds: new Set(),
+				addLabelIds: add,
+				removeLabelIds: remove,
+			};
+			map.set(key, entry);
+		}
+		for (const id of op.messageIds) {
+			entry.messageIds.add(id);
+		}
+	}
+
+	return [...map.values()].map((e) => ({
+		messageIds: [...e.messageIds],
+		addLabelIds: e.addLabelIds,
+		removeLabelIds: e.removeLabelIds,
+	}));
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+	const chunks: T[][] = [];
+	for (let i = 0; i < arr.length; i += size) {
+		chunks.push(arr.slice(i, i + size));
+	}
+	return chunks;
 }
 
 export async function testGmailConnection(): Promise<void> {
