@@ -3,6 +3,7 @@ import { configSlashCommand } from "./config";
 import { exitSlashCommand } from "./exit";
 import { helpSlashCommand } from "./help";
 import { integrationSlashCommand } from "./integration";
+import { logSlashCommand } from "./log";
 import { newSlashCommand } from "./new";
 import { personaSlashCommand } from "./persona";
 import { sessionsSlashCommand } from "./sessions";
@@ -19,6 +20,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	configSlashCommand,
 	helpSlashCommand,
 	integrationSlashCommand,
+	logSlashCommand,
 	personaSlashCommand,
 	newSlashCommand,
 	sessionsSlashCommand,

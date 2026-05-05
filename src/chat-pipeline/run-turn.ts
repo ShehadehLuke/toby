@@ -8,6 +8,7 @@ import { createGlobalChatTools } from "../ai/global-chat-tools";
 import type { Persona } from "../config/index";
 import { getIntegrationModule } from "../integrations/index";
 import type { IntegrationModule } from "../integrations/types";
+import { log } from "../logging/chat-log";
 
 type ChatTurnOptions = {
 	readonly persona: Persona;
@@ -96,6 +97,13 @@ export async function runSharedChatTurn(
 
 	const tools = withAskUserTool(mergedTools, options.askUser);
 	const model = createModelForPersona(options.persona);
+	const turnStartMs = Date.now();
+	log("info", "turn", "turn_start", {
+		modules: moduleNames,
+		messageCount: messages.length,
+		toolCount: Object.keys(tools).length,
+		model: options.persona.ai.model,
+	});
 	const result = await chatWithTools(
 		model,
 		messages,
@@ -105,6 +113,14 @@ export async function runSharedChatTurn(
 			moduleNames,
 		}),
 	);
+
+	log("info", "turn", "turn_end", {
+		durationMs: Date.now() - turnStartMs,
+		toolCallCount: result.toolCalls.length,
+		toolsUsed: result.toolCalls.map((tc) => tc.name),
+		inputTokens: result.usage?.inputTokens,
+		outputTokens: result.usage?.outputTokens,
+	});
 
 	return {
 		text: result.text,

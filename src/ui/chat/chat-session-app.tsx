@@ -25,6 +25,11 @@ import {
 import { type Persona, readConfig } from "../../config/index";
 import { getModulesWithCapability } from "../../integrations/index";
 import type { IntegrationModule } from "../../integrations/types";
+import {
+	createChatEventLogSink,
+	log,
+	logTurnSummary,
+} from "../../logging/chat-log";
 import { listPersonas, resolvePersona } from "../../personas/index";
 import { loadLocalSkills } from "../../skills/index";
 import { ConfigureApp } from "../configure/App";
@@ -393,6 +398,7 @@ export function ChatSessionApp({
 			didAutoRunFirstTurnRef.current = false;
 			setMessages(null);
 			setTranscript(params?.note ? [{ kind: "meta", text: params.note }] : []);
+			log("info", "session", "session_create", { note: params?.note });
 		},
 		[],
 	);
@@ -420,11 +426,14 @@ export function ChatSessionApp({
 			const turnAbort = new AbortController();
 			ongoingPretreatAbortRef.current = turnAbort;
 			let activeToolCalls = 0;
+			const turnStartMs = Date.now();
+			const eventLogSink = createChatEventLogSink(sid);
 			const nextLocalSeq = () => {
 				transcriptLocalSeqRef.current += 1;
 				return transcriptLocalSeqRef.current;
 			};
 			const emitChatEvent = (ev: ChatEvent) => {
+				eventLogSink(ev);
 				const footerHint = activityLineForChatEvent(ev);
 				if (footerHint !== null) {
 					setActivityLine(footerHint);
@@ -485,6 +494,20 @@ export function ChatSessionApp({
 				const next = [...msgs, ...out.responseMessages];
 				setMessages(next);
 				setLastUsage(out.usage ?? null);
+
+				logTurnSummary(sid, undefined, {
+					turnIndex: undefined,
+					durationMs: Date.now() - turnStartMs,
+					toolCallCount: out.toolCalls.length,
+					toolsUsed: out.toolCalls.map((tc) => tc.name),
+					cacheHits: 0,
+					cacheMisses: 0,
+					inputTokens: out.usage?.inputTokens,
+					outputTokens: out.usage?.outputTokens,
+					cacheReadTokens: out.usage?.inputTokenDetails?.cacheReadTokens,
+					cacheWriteTokens: out.usage?.inputTokenDetails?.cacheWriteTokens,
+					errorCount: 0,
+				});
 
 				const reply = out.text?.trim() || "";
 
@@ -565,6 +588,7 @@ export function ChatSessionApp({
 				}
 				const msg = e instanceof Error ? e.message : String(e);
 				setTranscript((t) => [...t, { kind: "error", text: msg }]);
+				log("error", "turn", "turn_error", { message: msg });
 			} finally {
 				setLoading(false);
 			}
@@ -764,6 +788,7 @@ export function ChatSessionApp({
 		renameChatSession(sid, suggested);
 		setSessionName(suggested);
 		didNameSessionRef.current = true;
+		log("info", "session", "session_rename", { id: sid, name: suggested });
 	}, [sessionId, transcript]);
 
 	useEffect(() => {
@@ -882,6 +907,7 @@ export function ChatSessionApp({
 
 	const loadSessionIntoMemory = useCallback((id: string) => {
 		const loaded = loadChatSession(id);
+		log("info", "session", "session_load", { id, name: loaded?.name });
 		if (!loaded) {
 			setTranscript((t) => [
 				...t,
