@@ -1607,29 +1607,6 @@ export function ChatSessionApp({
 				return;
 			}
 
-			const huggingFaceModelAdd = snapRef.current.huggingFaceModelAdd;
-			if (huggingFaceModelAdd) {
-				const len = huggingFaceModelAdd.rows.length;
-				const cursor = huggingFaceModelAdd.cursorIndex;
-
-				if (key.return) {
-					const row = huggingFaceModelAdd.rows[cursor];
-					if (!row) {
-						return;
-					}
-					if (row.kind === "add") {
-						const sess = createConfigureSession();
-						sess.callbacks.onCreateDownloadedModel(row.model);
-						setConfigureSession(refreshConfigureSessionTree(sess));
-						setConfigureInitialPath(["root", "ai", "ai.huggingface"]);
-						setConfigureEditorItemKey("ai.huggingface.model");
-						setConfigureMountKey((k) => k + 1);
-						setShowConfig(true);
-						return;
-					}
-					return;
-				}
-			}
 			const persPicker = snapRef.current.personaPicker;
 			if (persPicker) {
 				const len = persPicker.rows.length;

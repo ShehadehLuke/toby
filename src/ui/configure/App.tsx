@@ -7,6 +7,7 @@ import React, {
 	useRef,
 	type ReactNode,
 } from "react";
+import { addDownloadedModel } from "../../downloadedmodels";
 import { AppHeader } from "../chat/components/app-header";
 import { ACCENT, INPUT_BORDER } from "../chat/constants";
 import {
@@ -608,6 +609,13 @@ export function ConfigureApp({
 						migratedValues[`personas.${newName}.name`] = newName;
 						newValues = migratedValues;
 					}
+				}
+				if (editItem.key === "ai.huggingface.model") {
+					newValues = {
+						...newValues,
+						[editItem.key]: newValue,
+					};
+					addDownloadedModel(newValue);
 				}
 
 				setValues(newValues);

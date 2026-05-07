@@ -138,6 +138,8 @@ export function createConfigureSession(): ConfigureSession {
 			cfg.personas = rebuildPersonas(values, cfg.personas);
 			cfg.defaultProviders = rebuildDefaultProviders(values);
 			cfg.huggingFaceModels = getDownloadedModels();
+			addDownloadedModel(values["ai.huggingface.model"]);
+
 			writeConfig(cfg);
 		},
 		refreshTree,
