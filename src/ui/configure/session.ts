@@ -1,4 +1,4 @@
-import { AI_PROVIDERS } from "../../ai/providers";
+import { getAIProviders } from "../../ai/providers";
 import {
 	type CredentialsFile,
 	type Persona,
@@ -10,6 +10,10 @@ import {
 	writeConfig,
 	writeCredentials,
 } from "../../config/index";
+import {
+	addDownloadedModel,
+	getDownloadedModels,
+} from "../../downloadedmodels";
 import { getIntegrationModules } from "../../integrations/index";
 import {
 	ALL_PROVIDER_CATEGORIES,
@@ -24,6 +28,7 @@ interface ConfigureSession {
 	readonly onSave: (values: Record<string, string>) => void;
 	readonly refreshTree: (values: Record<string, string>) => SettingsItem;
 	readonly callbacks: {
+		readonly onCreateDownloadedModel: (model: string) => void;
 		readonly onCreatePersona: () => string;
 		readonly onDeletePersona: (name: string) => void;
 		readonly onSetDefaultPersona: (name: string) => void;
@@ -53,7 +58,7 @@ export function createConfigureSession(): ConfigureSession {
 		Object.assign(credentialValues, mod.seedCredentialValues(creds));
 	}
 	if (creds.ai?.openai?.token) {
-		credentialValues["ai.openai.token"] = creds.ai.openai.token;
+		credentialValues["ai.openai.token"] = creds.ai?.openai?.token ?? "";
 	}
 	for (const p of config.personas) {
 		credentialValues[`personas.${p.name}.name`] = p.name;
@@ -70,16 +75,20 @@ export function createConfigureSession(): ConfigureSession {
 	const refreshTree = (vals: Record<string, string>) => {
 		const freshConfig = readConfig();
 		const personasFromVals = rebuildPersonas(vals, freshConfig.personas);
+		const AI_Providers = getAIProviders();
 		const defaultProvidersFromVals = rebuildDefaultProviders(vals);
 		return buildSettingsTree(
 			personasFromVals,
-			AI_PROVIDERS,
+			AI_Providers,
 			vals,
 			defaultProvidersFromVals,
 		);
 	};
 
 	const callbacks = {
+		onCreateDownloadedModel: (model: string) => {
+			addDownloadedModel(model);
+		},
 		onCreatePersona: (): string => {
 			const cfg = readConfig();
 			const name = `Persona ${cfg.personas.length + 1}`;
@@ -128,6 +137,7 @@ export function createConfigureSession(): ConfigureSession {
 			const cfg = readConfig();
 			cfg.personas = rebuildPersonas(values, cfg.personas);
 			cfg.defaultProviders = rebuildDefaultProviders(values);
+			cfg.huggingFaceModels = getDownloadedModels();
 			writeConfig(cfg);
 		},
 		refreshTree,
@@ -145,8 +155,13 @@ function buildCredentialsFromValues(
 		next = mergeCredentials(next, patch);
 	}
 
-	const token = values["ai.openai.token"] ?? creds.ai?.openai?.token ?? "";
-	next = mergeCredentials(next, { ai: { openai: { token } } });
+	const openAIToken =
+		values["ai.openai.token"] ?? creds.ai?.openai?.token ?? "";
+	next = mergeCredentials(next, {
+		ai: {
+			openai: { token: openAIToken },
+		},
+	});
 	return next;
 }
 
