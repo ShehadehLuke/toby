@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createOpenAI } from "@ai-sdk/openai";
+import { transformersJS } from "@browser-ai/transformers-js";
 import {
 	type LanguageModelUsage,
 	type ModelMessage,
@@ -220,22 +221,30 @@ function injectToolLifecycleHooks(
 }
 
 export function createModelForPersona(persona: Persona) {
-	if (persona.ai.provider !== "openai") {
-		throw new Error(
-			`Unsupported AI provider: ${persona.ai.provider}. Only "openai" is supported.`,
-		);
+	if (persona.ai.provider === "openai") {
+		const creds = readCredentials();
+		const token = creds.ai?.openai?.token;
+		if (!token) {
+			throw new Error(
+				"OpenAI API token not configured. Run `toby configure` to set it.",
+			);
+		}
+
+		const openai = createOpenAI({ apiKey: token });
+		return openai(persona.ai.model as string);
+	}
+	if (persona.ai.provider === "huggingface") {
+		const model = persona.ai.model;
+		if (!model) {
+			throw new Error("Model not provided. Run `toby configure` to set it.");
+		}
+		const huggingface = transformersJS(model);
+		return huggingface;
 	}
 
-	const creds = readCredentials();
-	const token = creds.ai?.openai?.token;
-	if (!token) {
-		throw new Error(
-			"OpenAI API token not configured. Run `toby configure` to set it.",
-		);
-	}
-
-	const openai = createOpenAI({ apiKey: token });
-	return openai(persona.ai.model);
+	throw new Error(
+		`Unsupported AI provider: ${persona.ai.provider}. Only "openai" and "huggingface" is supported.`,
+	);
 }
 
 export async function chatWithTools(
@@ -299,6 +308,36 @@ export async function chatWithTools(
 			providerOptions: providerOptions as never,
 			abortSignal,
 		});
+
+		const availability = await model.availability();
+		if (availability === "available") {
+			throw new Error("Model is not available, or not supported.");
+		}
+		if (availability === "downloadable") {
+			const modelDownloadId = randomUUID();
+			await model.createSessionWithProgress(
+				({ progress }: { progress: number }) => {
+					if (onChatEvent) {
+						onChatEvent({
+							type: "model_download_start",
+							id: modelDownloadId,
+							seq: nextSeq(),
+							header: `Downloading model... ${Math.round(progress * 100)}%`,
+						});
+					}
+				},
+				({ progress }: { progress: number }) => {
+					if (onChatEvent) {
+						onChatEvent({
+							type: "model_download_end",
+							id: modelDownloadId,
+							seq: nextSeq(),
+							detail: `Model downloaded. ${Math.round(progress * 100)}%`,
+						});
+					}
+				},
+			);
+		}
 
 		const modelRequestId = randomUUID();
 		if (onChatEvent) {

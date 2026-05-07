@@ -43,7 +43,11 @@ describe("readConfig", () => {
 	it("returns empty config when file does not exist", () => {
 		if (fs.existsSync(CONFIG_PATH)) fs.unlinkSync(CONFIG_PATH);
 		const config = readConfig();
-		expect(config).toEqual({ integrations: {}, personas: [] });
+		expect(config).toEqual({
+			integrations: {},
+			personas: [],
+			huggingFaceModels: [],
+		});
 	});
 
 	it("reads existing config", () => {

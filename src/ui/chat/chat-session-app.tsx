@@ -127,6 +127,15 @@ type PersonaPickerRow =
 	| { readonly kind: "add" }
 	| { readonly kind: "persona"; readonly persona: Persona };
 
+type HuggingFaceModelAddRow = {
+	readonly kind: "add";
+	readonly model: string;
+};
+interface HuggingFaceModelAddState {
+	readonly rows: readonly HuggingFaceModelAddRow[];
+	readonly cursorIndex: number;
+}
+
 interface PersonaPickerState {
 	readonly rows: readonly PersonaPickerRow[];
 	readonly cursorIndex: number;
@@ -243,6 +252,8 @@ export function ChatSessionApp({
 	const [personaPicker, setPersonaPicker] = useState<PersonaPickerState | null>(
 		null,
 	);
+	const [huggingFaceModelAdd, setHuggingFaceModelAdd] =
+		useState<HuggingFaceModelAddState | null>(null);
 	const [activePersona, setActivePersona] = useState(() => persona);
 	const activePersonaRef = useRef(activePersona);
 	const [activePlan, setActivePlan] = useState<Plan | null>(null);
@@ -277,6 +288,7 @@ export function ChatSessionApp({
 		multiPicker: null as MultiPickerState | null,
 		sessionPicker: null as SessionPickerState | null,
 		personaPicker: null as PersonaPickerState | null,
+		huggingFaceModelAdd: null as HuggingFaceModelAddState | null,
 	});
 
 	const allDisplayRows = useMemo((): DisplayRow[] => {
@@ -424,6 +436,7 @@ export function ChatSessionApp({
 			multiPicker,
 			sessionPicker,
 			personaPicker,
+			huggingFaceModelAdd,
 		};
 	}, [
 		askModal,
@@ -434,6 +447,7 @@ export function ChatSessionApp({
 		multiPicker,
 		sessionPicker,
 		personaPicker,
+		huggingFaceModelAdd,
 	]);
 
 	const startFreshSession = useCallback(
@@ -1593,6 +1607,29 @@ export function ChatSessionApp({
 				return;
 			}
 
+			const huggingFaceModelAdd = snapRef.current.huggingFaceModelAdd;
+			if (huggingFaceModelAdd) {
+				const len = huggingFaceModelAdd.rows.length;
+				const cursor = huggingFaceModelAdd.cursorIndex;
+
+				if (key.return) {
+					const row = huggingFaceModelAdd.rows[cursor];
+					if (!row) {
+						return;
+					}
+					if (row.kind === "add") {
+						const sess = createConfigureSession();
+						sess.callbacks.onCreateDownloadedModel(row.model);
+						setConfigureSession(refreshConfigureSessionTree(sess));
+						setConfigureInitialPath(["root", "ai", "ai.huggingface"]);
+						setConfigureEditorItemKey("ai.huggingface.model");
+						setConfigureMountKey((k) => k + 1);
+						setShowConfig(true);
+						return;
+					}
+					return;
+				}
+			}
 			const persPicker = snapRef.current.personaPicker;
 			if (persPicker) {
 				const len = persPicker.rows.length;

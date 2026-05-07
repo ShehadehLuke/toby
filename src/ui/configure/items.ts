@@ -190,6 +190,19 @@ export function buildSettingsTree(
 							},
 						],
 					},
+					{
+						label: "Hugging Face",
+						kind: "section",
+						key: "ai.huggingface",
+						children: [
+							{
+								label: "Add Model",
+								kind: "value",
+								key: "ai.huggingface.model",
+								masked: false,
+							},
+						],
+					},
 				],
 			},
 			{

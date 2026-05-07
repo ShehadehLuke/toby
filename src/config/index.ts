@@ -44,7 +44,7 @@ export function getSkillsDir(): string {
 
 interface AIProvider {
 	provider: string;
-	model: string;
+	model: string; // model name
 }
 
 type PersonaPromptMode = "add" | "replace";
@@ -63,6 +63,7 @@ interface TobyConfig {
 	personas: Persona[];
 	defaultPersona?: string;
 	defaultProviders?: Partial<Record<ProviderCategory, string>>;
+	huggingFaceModels: string[];
 }
 
 export interface GmailCredentials {
@@ -127,7 +128,7 @@ export function readConfig(): TobyConfig {
 	const configPath = getConfigPath();
 	ensureTobyDir();
 	if (!fs.existsSync(configPath)) {
-		return { integrations: {}, personas: [] };
+		return { integrations: {}, personas: [], huggingFaceModels: [] };
 	}
 	const raw = fs.readFileSync(configPath, "utf-8");
 	const parsed = JSON.parse(raw) as Partial<TobyConfig>;
@@ -144,6 +145,7 @@ export function readConfig(): TobyConfig {
 		personas,
 		defaultPersona: parsed.defaultPersona,
 		defaultProviders: parsed.defaultProviders,
+		huggingFaceModels: parsed.huggingFaceModels ?? [],
 	};
 }
 
