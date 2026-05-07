@@ -1,5 +1,7 @@
+import type { PlanPhaseStatus, PlanStatus } from "../planning/types";
+
 /**
- * UI-agnostic events emitted during a chat turn (pretreatment, model, tools).
+ * UI-agnostic events emitted during a chat turn (pretreatment, model, tools, plans).
  * Presentation (colors, borders) lives in UI adapters only.
  */
 
@@ -62,6 +64,41 @@ export type ChatEvent =
 			readonly result: unknown;
 			readonly error?: unknown;
 			readonly cacheHit?: boolean;
+	  }
+	| {
+			readonly type: "plan_created";
+			readonly id: string;
+			readonly seq: number;
+			readonly goal: string;
+			readonly phaseCount: number;
+	  }
+	| {
+			readonly type: "plan_phase_start";
+			readonly planId: string;
+			readonly phaseId: string;
+			readonly seq: number;
+			readonly label: string;
+			readonly index: number;
+			readonly total: number;
+	  }
+	| {
+			readonly type: "plan_phase_end";
+			readonly planId: string;
+			readonly phaseId: string;
+			readonly seq: number;
+			readonly status: PlanPhaseStatus;
+	  }
+	| {
+			readonly type: "plan_amended";
+			readonly planId: string;
+			readonly seq: number;
+			readonly detail: string;
+	  }
+	| {
+			readonly type: "plan_completed";
+			readonly planId: string;
+			readonly seq: number;
+			readonly status: PlanStatus;
 	  };
 
 export type ChatEventSink = (event: ChatEvent) => void;

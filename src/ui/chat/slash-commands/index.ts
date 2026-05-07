@@ -6,12 +6,14 @@ import { integrationSlashCommand } from "./integration";
 import { logSlashCommand } from "./log";
 import { newSlashCommand } from "./new";
 import { personaSlashCommand } from "./persona";
+import { planSlashCommand } from "./plan";
 import { sessionsSlashCommand } from "./sessions";
 import type { SlashCommand } from "./types";
 
 interface SlashCommandResolution {
 	readonly kind: "none" | "execute" | "unknown";
 	readonly command?: SlashCommand;
+	readonly rawArgs?: string;
 	readonly attemptedToken?: string;
 }
 
@@ -21,6 +23,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	helpSlashCommand,
 	integrationSlashCommand,
 	logSlashCommand,
+	planSlashCommand,
 	personaSlashCommand,
 	newSlashCommand,
 	sessionsSlashCommand,
@@ -65,21 +68,23 @@ export function resolveSlashSubmission(
 	line: string,
 	selectedSuggestion: SlashCommand | null,
 ): SlashCommandResolution {
-	const normalized = line.trim().toLowerCase();
+	const trimmed = line.trim();
+	const normalized = trimmed.toLowerCase();
 	if (!normalized) {
 		return { kind: "none" };
 	}
 
 	const firstToken = normalized.split(/\s+/, 1)[0] ?? "";
+	const rawArgs = trimmed.slice(firstToken.length).trim();
 	const tokenOnlyCommand =
 		firstToken.startsWith("/") && firstToken === normalized;
 	const exactCommand = SLASH_COMMANDS.find(
-		(item) => item.command === normalized,
+		(item) => item.command === firstToken,
 	);
 	const chosen = exactCommand ?? (tokenOnlyCommand ? selectedSuggestion : null);
 
 	if (chosen) {
-		return { kind: "execute", command: chosen };
+		return { kind: "execute", command: chosen, rawArgs };
 	}
 	if (tokenOnlyCommand) {
 		return { kind: "unknown", attemptedToken: line.trim() };

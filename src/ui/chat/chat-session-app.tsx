@@ -31,6 +31,16 @@ import {
 	logTurnSummary,
 } from "../../logging/chat-log";
 import { listPersonas, resolvePersona } from "../../personas/index";
+import {
+	type Plan,
+	cancelPlan,
+	createPlan,
+	executePlan,
+	generatePlan,
+	loadPlanBySession,
+	shouldGeneratePlan,
+	skipPhase,
+} from "../../planning/index";
 import { loadLocalSkills } from "../../skills/index";
 import { ConfigureApp } from "../configure/App";
 import {
@@ -46,6 +56,7 @@ import {
 	IntegrationMultiPickerModal,
 	buildIntegrationPickerRows,
 } from "./components/integration-multi-picker-modal";
+import { PlanStatusBar } from "./components/plan-status-bar";
 import { buildTranscriptNodes } from "./components/transcript";
 import { ACCENT } from "./constants";
 import { formatToolStatusLine } from "./format-tool-status";
@@ -71,8 +82,14 @@ import {
 	getSlashSuggestions,
 	resolveSlashSubmission,
 } from "./slash-commands";
+import { getToolDisplayLabel } from "./tool-labels";
 import { flattenTranscript } from "./transcript-layout";
 import type { AskModal, DisplayRow, TranscriptEntry } from "./types";
+
+type TurnResult = {
+	readonly text: string;
+	readonly responseMessages: readonly CoreMessage[];
+};
 
 interface ChatSessionAppProps {
 	readonly initialModules: readonly IntegrationModule[];
@@ -203,6 +220,8 @@ export function ChatSessionApp({
 	);
 	const [activePersona, setActivePersona] = useState(() => persona);
 	const activePersonaRef = useRef(activePersona);
+	const [activePlan, setActivePlan] = useState<Plan | null>(null);
+	const activePlanRef = useRef<Plan | null>(null);
 	const [configureInitialPath, setConfigureInitialPath] = useState<
 		readonly string[] | undefined
 	>(undefined);
@@ -225,6 +244,9 @@ export function ChatSessionApp({
 	const sessionIdRef = useRef<string | null>(null);
 	const transcriptRef = useRef(transcript);
 	const ongoingPretreatAbortRef = useRef<AbortController | null>(null);
+	const turnToolCallsRef = useRef<
+		{ name: string; status: "in_progress" | "completed" }[]
+	>([]);
 	const snapRef = useRef({
 		askModal: null as AskModal | null,
 		messages: null as CoreMessage[] | null,
@@ -363,6 +385,10 @@ export function ChatSessionApp({
 	}, [activePersona]);
 
 	useLayoutEffect(() => {
+		activePlanRef.current = activePlan;
+	}, [activePlan]);
+
+	useLayoutEffect(() => {
 		askSelectedRef.current = askSelected;
 		snapRef.current = {
 			askModal,
@@ -397,6 +423,7 @@ export function ChatSessionApp({
 			setSessionPrompt(params?.prompt ?? "");
 			didAutoRunFirstTurnRef.current = false;
 			setMessages(null);
+			setActivePlan(null);
 			setTranscript(params?.note ? [{ kind: "meta", text: params.note }] : []);
 			log("info", "session", "session_create", { note: params?.note });
 		},
@@ -413,7 +440,10 @@ export function ChatSessionApp({
 	);
 
 	const runModelTurn = useCallback(
-		async (msgs: CoreMessage[], overrideSessionId?: string) => {
+		async (
+			msgs: CoreMessage[],
+			overrideSessionId?: string,
+		): Promise<TurnResult> => {
 			const sid = overrideSessionId ?? sessionIdRef.current;
 			if (!sid) {
 				throw new Error("Internal error: missing session id");
@@ -426,6 +456,8 @@ export function ChatSessionApp({
 			const turnAbort = new AbortController();
 			ongoingPretreatAbortRef.current = turnAbort;
 			let activeToolCalls = 0;
+			let implicitPlanCreated = false;
+			turnToolCallsRef.current = [];
 			const turnStartMs = Date.now();
 			const eventLogSink = createChatEventLogSink(sid);
 			const nextLocalSeq = () => {
@@ -471,6 +503,8 @@ export function ChatSessionApp({
 				}
 				setTranscript((t) => applyChatEvent(t, ev));
 			};
+			let responseMessages: CoreMessage[] = [];
+			let responseText = "";
 			try {
 				const out = await runIntegrationChatTurn(moduleNames, msgs, {
 					persona: activePersona,
@@ -482,11 +516,83 @@ export function ChatSessionApp({
 						onToolCallStart: ({ toolName }) => {
 							activeToolCalls += 1;
 							setActivityLine(formatToolStatusLine(toolName));
+							const displayLabel = getToolDisplayLabel(toolName);
+							turnToolCallsRef.current = [
+								...turnToolCallsRef.current,
+								{ name: toolName, status: "in_progress" as const },
+							];
+							// When 2+ tools are called, create an implicit plan for the status bar
+							if (
+								!implicitPlanCreated &&
+								turnToolCallsRef.current.length >= 2
+							) {
+								implicitPlanCreated = true;
+								const phases = turnToolCallsRef.current.map((tc, i) => ({
+									id: `impl-phase-${i}`,
+									label: getToolDisplayLabel(tc.name),
+									description: tc.name,
+									status: tc.status as "in_progress" | "completed",
+									order: i,
+									addedAt: new Date().toISOString(),
+								}));
+								const plan: Plan = {
+									id: "implicit-turn-plan",
+									sessionId: sid,
+									goal: "Executing multi-step actions",
+									phases,
+									status: "in_progress",
+									createdAt: new Date().toISOString(),
+									updatedAt: new Date().toISOString(),
+								};
+								setActivePlan(plan);
+								activePlanRef.current = plan;
+							} else if (implicitPlanCreated) {
+								// Add new phase to existing implicit plan
+								const newLabel = getToolDisplayLabel(toolName);
+								setActivePlan((prev) => {
+									if (!prev || prev.id !== "implicit-turn-plan") return prev;
+									const newPhase = {
+										id: `impl-phase-${turnToolCallsRef.current.length - 1}`,
+										label: newLabel,
+										description: toolName,
+										status: "in_progress" as const,
+										order: prev.phases.length,
+										addedAt: new Date().toISOString(),
+									};
+									return { ...prev, phases: [...prev.phases, newPhase] };
+								});
+							}
 						},
-						onToolCallComplete: () => {
+						onToolCallComplete: ({ toolName }) => {
 							activeToolCalls = Math.max(0, activeToolCalls - 1);
 							if (activeToolCalls === 0) {
 								setActivityLine("Thinking…");
+							}
+							// Mark the first in-progress tool with this name as completed
+							turnToolCallsRef.current = turnToolCallsRef.current.map(
+								(tc, i) => {
+									if (tc.name === toolName && tc.status === "in_progress") {
+										return { ...tc, status: "completed" as const };
+									}
+									return tc;
+								},
+							);
+							if (implicitPlanCreated) {
+								setActivePlan((prev) => {
+									if (!prev || prev.id !== "implicit-turn-plan") return prev;
+									const updatedPhases = prev.phases.map((p, i) => {
+										const tc = turnToolCallsRef.current[i];
+										if (
+											tc &&
+											tc.status === "completed" &&
+											p.status === "in_progress"
+										) {
+											return { ...p, status: "completed" as const };
+										}
+										return p;
+									});
+									return { ...prev, phases: updatedPhases };
+								});
 							}
 						},
 					},
@@ -494,6 +600,8 @@ export function ChatSessionApp({
 				const next = [...msgs, ...out.responseMessages];
 				setMessages(next);
 				setLastUsage(out.usage ?? null);
+				responseMessages = out.responseMessages;
+				responseText = out.text ?? "";
 
 				logTurnSummary(sid, undefined, {
 					turnIndex: undefined,
@@ -589,9 +697,18 @@ export function ChatSessionApp({
 				const msg = e instanceof Error ? e.message : String(e);
 				setTranscript((t) => [...t, { kind: "error", text: msg }]);
 				log("error", "turn", "turn_error", { message: msg });
+				throw e;
 			} finally {
 				setLoading(false);
+				// Clear implicit plan after turn completes
+				if (implicitPlanCreated) {
+					setActivePlan((prev) => {
+						if (!prev || prev.id !== "implicit-turn-plan") return prev;
+						return { ...prev, status: "completed" };
+					});
+				}
 			}
+			return { text: responseText, responseMessages };
 		},
 		[moduleNames, askUserHandler, dryRun, activePersona],
 	);
@@ -802,8 +919,150 @@ export function ChatSessionApp({
 			return;
 		}
 		didAutoRunFirstTurnRef.current = true;
-		void runModelTurn(messages);
-	}, [bootError, messages, runModelTurn, sessionPrompt]);
+
+		let sid = sessionId;
+		if (!sid) {
+			const created = createChatSession({ name: "New chat" });
+			sid = created.id;
+			setSessionId(created.id);
+			setSessionName(created.name);
+			lastSavedMessageCountRef.current = 0;
+			lastSavedTranscriptCountRef.current = 0;
+		}
+		const sidFinal = sid;
+
+		void (async () => {
+			// Check if explicit plan generation should run based on the
+			// pretreatment spec that was already attached during boot preparation.
+			// Implicit plans (2+ tool calls in a turn) are handled reactively
+			// in runModelTurn's onToolCallStart/onToolCallComplete callbacks.
+			let lastUserMsg: CoreMessage | undefined;
+			for (let mi = messages.length - 1; mi >= 0; mi--) {
+				const m = messages[mi];
+				if (m.role === "user") {
+					lastUserMsg = m;
+					break;
+				}
+			}
+			const userContent =
+				typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
+			// Only attempt plan generation if the prompt looks multi-step.
+			if (!shouldGeneratePlan(null, sessionPrompt)) {
+				void runModelTurnRef.current(messages, sidFinal);
+				return;
+			}
+
+			const planResult = await generatePlan(null, sessionPrompt, {
+				abortSignal: ongoingPretreatAbortRef.current?.signal,
+			});
+
+			if (!planResult || planResult.phases.length < 2) {
+				// No plan needed, run a single turn
+				void runModelTurnRef.current(messages, sidFinal);
+				return;
+			}
+
+			// Create and execute the plan
+			const plan = createPlan({
+				sessionId: sidFinal,
+				goal: planResult.goal,
+				phases: planResult.phases,
+			});
+			setActivePlan(plan);
+			activePlanRef.current = plan;
+
+			// Add plan context to the first user message
+			const planContextLines = [
+				`[Plan created with ${plan.phases.length} phases]`,
+				`Goal: ${plan.goal}`,
+				"Phases:",
+				...plan.phases.map(
+					(p, i) => `  ${i + 1}. ${p.label}: ${p.description}`,
+				),
+				"Execute the plan phase by phase.",
+			];
+			const planContext = planContextLines.join("\n");
+			const augmentedMessages = messages.map((m) => {
+				if (m.role === "user" && m === lastUserMsg) {
+					return {
+						...m,
+						content:
+							typeof m.content === "string"
+								? `${m.content}\n\n${planContext}`
+								: m.content,
+					};
+				}
+				return m;
+			});
+			setMessages(augmentedMessages);
+
+			const nextLocalSeq = () => {
+				transcriptLocalSeqRef.current += 1;
+				return transcriptLocalSeqRef.current;
+			};
+
+			try {
+				const resultPlan = await executePlan(plan, {
+					sessionId: sidFinal,
+					emitChatEvent: (ev: ChatEvent) => {
+						const eventLogSink = createChatEventLogSink(sidFinal);
+						eventLogSink(ev);
+						const footerHint = activityLineForChatEvent(ev);
+						if (footerHint !== null) {
+							setActivityLine(footerHint);
+						}
+						if (
+							ev.type === "plan_phase_start" ||
+							ev.type === "plan_phase_end"
+						) {
+							setTranscript((t) => applyChatEvent(t, ev));
+						}
+						if (ev.type === "plan_created") {
+							setTranscript((t) => applyChatEvent(t, ev));
+						}
+						if (ev.type === "plan_amended") {
+							setTranscript((t) => applyChatEvent(t, ev));
+						}
+						if (ev.type === "plan_completed") {
+							setTranscript((t) => applyChatEvent(t, ev));
+						}
+						// Refresh active plan state on phase transitions
+						if (
+							ev.type === "plan_phase_end" ||
+							ev.type === "plan_amended" ||
+							ev.type === "plan_completed"
+						) {
+							const refreshed = loadPlanBySession(sidFinal);
+							if (refreshed) {
+								setActivePlan(refreshed);
+								activePlanRef.current = refreshed;
+							}
+						}
+					},
+					nextSeq: nextLocalSeq,
+					runTurn: async (msgs, overrideSid) => {
+						await runModelTurnRef.current(msgs, overrideSid);
+						// After the turn, the messages state has been updated.
+						// Return a minimal result since executePlan needs responseMessages
+						// but the actual state update happens in runModelTurn.
+						// We return empty since executePlan manages its own message flow
+						// by calling runTurn which appends to the session history.
+						return {
+							text: "",
+							responseMessages: [] as CoreMessage[],
+						};
+					},
+					abortSignal: ongoingPretreatAbortRef.current?.signal,
+				});
+
+				setActivePlan(resultPlan);
+				activePlanRef.current = resultPlan;
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : String(e);
+				setTranscript((t) => [...t, { kind: "error", text: msg }]);
+			}
+		})();
+	}, [bootError, messages, sessionPrompt, sessionId]);
 
 	const runModelTurnRef = useRef(runModelTurn);
 	runModelTurnRef.current = runModelTurn;
@@ -944,6 +1203,29 @@ export function ChatSessionApp({
 			}
 		}
 		transcriptLocalSeqRef.current = maxSeq;
+
+		// Load any incomplete plan for this session
+		const plan = loadPlanBySession(loaded.id);
+		if (
+			plan &&
+			(plan.status === "in_progress" || plan.status === "interrupted")
+		) {
+			setActivePlan(plan);
+			activePlanRef.current = plan;
+			const completedCount = plan.phases.filter(
+				(p) => p.status === "completed",
+			).length;
+			setTranscript((t) => [
+				...t,
+				{
+					kind: "meta",
+					text: `Resuming plan: ${plan.goal} (${completedCount}/${plan.phases.length} phases complete)`,
+				},
+			]);
+		} else {
+			setActivePlan(null);
+			activePlanRef.current = null;
+		}
 	}, []);
 
 	const handlePromptSubmit = useCallback(
@@ -957,39 +1239,59 @@ export function ChatSessionApp({
 			setInput("");
 			const slash = resolveSlashSubmission(line, selectedSlashCommand);
 			if (slash.kind === "execute" && slash.command) {
-				void slash.command.run({
-					exit,
-					openHelp: () => setShowHelp(true),
-					openConfig: () => {
-						setConfigureSession(createConfigureSession());
-						setConfigureInitialPath(undefined);
-						setConfigureEditorItemKey(undefined);
-						setConfigureMountKey((k) => k + 1);
-						setShowConfig(true);
+				void slash.command.run(
+					{
+						exit,
+						openHelp: () => setShowHelp(true),
+						openConfig: () => {
+							setConfigureSession(createConfigureSession());
+							setConfigureInitialPath(undefined);
+							setConfigureEditorItemKey(undefined);
+							setConfigureMountKey((k) => k + 1);
+							setShowConfig(true);
+						},
+						openPersonaPicker: () => {
+							openPersonaPickerModal();
+						},
+						openPersonaConfigure: (pathKeys) => {
+							openPersonaEditorAtPath(pathKeys);
+						},
+						openIntegrationPicker: () => {
+							void openIntegrationPicker();
+						},
+						openSessionsPicker: () => {
+							openSessionsPicker();
+						},
+						startNewSession: () => {
+							startFreshSession({
+								prompt: "",
+								note: "Started a new chat session.",
+							});
+						},
+						chatIntegrationsCount: chatIntegrations.length,
+						addMetaLine: (text) => {
+							setTranscript((t) => [...t, { kind: "meta", text }]);
+						},
+						getActivePlan: () => activePlanRef.current,
+						skipPlanPhase: (planId: string, phaseId: string) => {
+							skipPhase(planId, phaseId);
+							const refreshed = loadPlanBySession(sessionIdRef.current ?? "");
+							if (refreshed) {
+								setActivePlan(refreshed);
+								activePlanRef.current = refreshed;
+							}
+						},
+						cancelPlan: (planId: string) => {
+							cancelPlan(planId);
+							const refreshed = loadPlanBySession(sessionIdRef.current ?? "");
+							if (refreshed) {
+								setActivePlan(refreshed);
+								activePlanRef.current = refreshed;
+							}
+						},
 					},
-					openPersonaPicker: () => {
-						openPersonaPickerModal();
-					},
-					openPersonaConfigure: (pathKeys) => {
-						openPersonaEditorAtPath(pathKeys);
-					},
-					openIntegrationPicker: () => {
-						void openIntegrationPicker();
-					},
-					openSessionsPicker: () => {
-						openSessionsPicker();
-					},
-					startNewSession: () => {
-						startFreshSession({
-							prompt: "",
-							note: "Started a new chat session.",
-						});
-					},
-					chatIntegrationsCount: chatIntegrations.length,
-					addMetaLine: (text) => {
-						setTranscript((t) => [...t, { kind: "meta", text }]);
-					},
-				});
+					slash.rawArgs,
+				);
 				return;
 			}
 			if (slash.kind === "unknown") {
@@ -1698,6 +2000,11 @@ export function ChatSessionApp({
 						</Text>
 					</Box>
 				</Box>
+			) : null}
+			{activePlan &&
+			activePlan.status !== "completed" &&
+			activePlan.status !== "failed" ? (
+				<PlanStatusBar plan={activePlan} termCols={termCols} />
 			) : null}
 			<ChatInputDock
 				termCols={termCols}

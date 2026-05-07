@@ -1,5 +1,6 @@
 import type { AskUserToolResult } from "../../ai/ask-user-tool";
 import type { ChatEvent } from "../../chat-pipeline/chat-events";
+import type { PlanPhaseStatus } from "../../planning/types";
 import { formatToolFeedbackOutput } from "./tool-feedback-registry";
 import { getToolDisplayLabel } from "./tool-labels";
 import type { ToolRunEntry, TranscriptEntry } from "./types";
@@ -339,6 +340,86 @@ export function applyChatEvent(
 			toolName: event.toolName,
 			...(event.cacheHit !== undefined ? { cacheHit: event.cacheHit } : {}),
 		});
+	}
+	if (event.type === "plan_created") {
+		const phaseList = Array.from(
+			{ length: event.phaseCount },
+			(_, i) => `  ${i + 1}. (pending)`,
+		).join("\n");
+		return [
+			...entries,
+			{
+				kind: "boxed_step",
+				id: event.id,
+				seq: event.seq,
+				variant: "plan" as const,
+				header: `Plan: ${event.goal}`,
+				body: `Phases:\n${phaseList}`,
+			},
+		];
+	}
+	if (event.type === "plan_phase_start") {
+		return [
+			...entries,
+			{
+				kind: "boxed_step",
+				id: event.phaseId,
+				seq: event.seq,
+				variant: "lifecycle" as const,
+				header: `Phase ${event.index + 1}/${event.total}: ${event.label}`,
+				body: "",
+			},
+		];
+	}
+	if (event.type === "plan_phase_end") {
+		const statusLabel: Record<PlanPhaseStatus, string> = {
+			completed: "Completed",
+			skipped: "Skipped",
+			failed: "Failed",
+			in_progress: "In progress",
+			pending: "Pending",
+		};
+		const idx = findLastBoxedStepIndex(entries, event.phaseId, "lifecycle");
+		if (idx < 0) {
+			return [
+				...entries,
+				{
+					kind: "boxed_step",
+					id: event.phaseId,
+					seq: event.seq,
+					variant: "lifecycle" as const,
+					header: "Phase",
+					body: statusLabel[event.status] ?? event.status,
+				},
+			];
+		}
+		const cur = entries[idx];
+		if (cur.kind !== "boxed_step") {
+			return [...entries];
+		}
+		return replaceEntry(entries, idx, {
+			...cur,
+			body: statusLabel[event.status] ?? event.status,
+			seq: event.seq,
+		});
+	}
+	if (event.type === "plan_amended") {
+		return [
+			...entries,
+			{
+				kind: "meta",
+				text: `Plan amended: ${event.detail}`,
+			},
+		];
+	}
+	if (event.type === "plan_completed") {
+		return [
+			...entries,
+			{
+				kind: "meta",
+				text: `Plan ${event.status}`,
+			},
+		];
 	}
 	return [...entries];
 }

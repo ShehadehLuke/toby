@@ -16,7 +16,7 @@ export type TranscriptEntry =
 			readonly kind: "boxed_step";
 			readonly id: string;
 			readonly seq: number;
-			readonly variant: "prep" | "lifecycle" | "assistant" | "tool";
+			readonly variant: "prep" | "lifecycle" | "assistant" | "tool" | "plan";
 			readonly header: string;
 			readonly body: string;
 			readonly toolBlockKey?: string;
@@ -51,7 +51,7 @@ export type DisplayRow =
 	| {
 			readonly kind: "boxed_block";
 			readonly id: string;
-			readonly variant: "prep" | "lifecycle" | "assistant" | "tool";
+			readonly variant: "prep" | "lifecycle" | "assistant" | "tool" | "plan";
 			readonly header: string;
 			readonly bodyLines: readonly string[];
 			readonly leadingGlyph: string;

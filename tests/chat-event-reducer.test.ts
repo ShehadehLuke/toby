@@ -394,4 +394,135 @@ describe("flattenTranscript boxed_step", () => {
 			expect(bb.bodyLines.join("\n")).toContain("2. List labels [cache]");
 		}
 	});
+
+	it("collapses repeated identical grouped tool runs into one body", () => {
+		const entries: TranscriptEntry[] = [
+			{
+				kind: "boxed_step",
+				id: "group-1",
+				seq: 1,
+				variant: "tool",
+				header: "Fetch email metadata (x3)",
+				body: "",
+				toolName: "fetchEmailMetadata",
+				toolRuns: [
+					{
+						blockKey: "a",
+						header: "Fetch email metadata",
+						body: "Found 20 email(s).",
+					},
+					{
+						blockKey: "b",
+						header: "Fetch email metadata",
+						body: "Found 20 email(s).",
+					},
+					{
+						blockKey: "c",
+						header: "Fetch email metadata",
+						body: "Found 20 email(s).",
+					},
+				],
+			},
+		];
+		const rows = flattenTranscript(entries, "", false, 80);
+		const bb = rows.find((r) => r.kind === "boxed_block");
+		expect(bb?.kind).toBe("boxed_block");
+		if (bb?.kind === "boxed_block") {
+			expect(bb.header).toBe("Fetch email metadata (x3)");
+			expect(bb.bodyLines).toEqual(["Found 20 email(s)."]);
+		}
+	});
+});
+
+describe("plan events", () => {
+	it("plan_created adds a plan boxed step", () => {
+		let t: TranscriptEntry[] = [];
+		t = applyChatEvent(t, {
+			type: "plan_created",
+			id: "plan-1",
+			seq: 1,
+			goal: "Organize inbox",
+			phaseCount: 3,
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		const row = t[0];
+		expect(row?.kind).toBe("boxed_step");
+		if (row?.kind === "boxed_step") {
+			expect(row.variant).toBe("plan");
+			expect(row.header).toBe("Plan: Organize inbox");
+			expect(row.body).toContain("1. (pending)");
+			expect(row.body).toContain("3. (pending)");
+		}
+	});
+
+	it("plan_phase_start then plan_phase_end updates the lifecycle row", () => {
+		let t: TranscriptEntry[] = [];
+		t = applyChatEvent(t, {
+			type: "plan_phase_start",
+			planId: "plan-1",
+			phaseId: "phase-1",
+			seq: 1,
+			label: "Fetch emails",
+			index: 0,
+			total: 3,
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		expect(t[0]?.kind).toBe("boxed_step");
+		if (t[0]?.kind === "boxed_step") {
+			expect(t[0].header).toBe("Phase 1/3: Fetch emails");
+		}
+		t = applyChatEvent(t, {
+			type: "plan_phase_end",
+			planId: "plan-1",
+			phaseId: "phase-1",
+			seq: 2,
+			status: "completed",
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		const row = t[0];
+		expect(row?.kind).toBe("boxed_step");
+		if (row?.kind === "boxed_step") {
+			expect(row.body).toBe("Completed");
+		}
+	});
+
+	it("plan_amended adds a meta entry", () => {
+		let t: TranscriptEntry[] = [];
+		t = applyChatEvent(t, {
+			type: "plan_amended",
+			planId: "plan-1",
+			seq: 1,
+			detail: 'Added phase "Review" after phase 2',
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		expect(t[0]?.kind).toBe("meta");
+		expect(t[0]?.kind === "meta" && t[0].text).toContain("Plan amended");
+	});
+
+	it("plan_completed adds a meta entry", () => {
+		let t: TranscriptEntry[] = [];
+		t = applyChatEvent(t, {
+			type: "plan_completed",
+			planId: "plan-1",
+			seq: 1,
+			status: "completed",
+		} satisfies ChatEvent);
+		expect(t).toHaveLength(1);
+		expect(t[0]?.kind).toBe("meta");
+		expect(t[0]?.kind === "meta" && t[0].text).toBe("Plan completed");
+	});
+
+	it("round-trips plan boxed_step", () => {
+		const e: TranscriptEntry = {
+			kind: "boxed_step",
+			id: "plan-1",
+			seq: 1,
+			variant: "plan",
+			header: "Plan: Organize inbox",
+			body: "Phases:\n  1. (pending)",
+		};
+		const row = serializeTranscriptEntry(e);
+		expect(row.kind).toBe("boxed_step");
+		expect(deserializeTranscriptRow(row)).toEqual(e);
+	});
 });

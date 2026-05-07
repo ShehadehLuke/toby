@@ -42,7 +42,7 @@ export function closeChatDbForTests(): void {
 	}
 }
 
-function getDb(): SqliteDb {
+export function getDb(): SqliteDb {
 	if (dbSingleton) {
 		return dbSingleton;
 	}
@@ -96,6 +96,30 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
 
 CREATE INDEX IF NOT EXISTS idx_chat_pretreatment_cache_last_hit_at
   ON chat_pretreatment_cache(last_hit_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_plans (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS chat_plan_phases (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  phase_order INTEGER NOT NULL,
+  added_at TEXT NOT NULL,
+  FOREIGN KEY (plan_id) REFERENCES chat_plans(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_plans_session_id
+  ON chat_plans(session_id);
 `);
 }
 

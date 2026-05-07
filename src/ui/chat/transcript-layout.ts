@@ -78,21 +78,57 @@ function flattenGroupedToolRunLines(
 	runs: readonly { header: string; body: string; cacheHit?: boolean }[],
 	termCols: number,
 ): string[] {
-	const lines: string[] = [];
-	for (let idx = 0; idx < runs.length; idx++) {
-		const run = runs[idx];
-		if (run === undefined) {
+	const groups: {
+		header: string;
+		body: string;
+		cacheHit?: boolean;
+		count: number;
+	}[] = [];
+	for (const run of runs) {
+		const body = run.body.trim();
+		const existing = groups.find(
+			(group) =>
+				group.header === run.header &&
+				group.body === body &&
+				group.cacheHit === run.cacheHit,
+		);
+		if (existing) {
+			existing.count += 1;
 			continue;
 		}
-		const title = `${idx + 1}. ${run.header}${run.cacheHit ? " [cache]" : ""}`;
+		groups.push({
+			header: run.header,
+			body,
+			...(run.cacheHit !== undefined ? { cacheHit: run.cacheHit } : {}),
+			count: 1,
+		});
+	}
+
+	if (groups.length === 1) {
+		const group = groups[0];
+		if (group?.body) {
+			return flattenBoxedBodyLines(group.body, termCols);
+		}
+		if (group) {
+			const title = `${group.header}${group.cacheHit ? " [cache]" : ""}`;
+			return flattenBoxedBodyLines(title, termCols);
+		}
+	}
+
+	const lines: string[] = [];
+	for (let idx = 0; idx < groups.length; idx++) {
+		const group = groups[idx];
+		if (group === undefined) {
+			continue;
+		}
+		const title = `${idx + 1}. ${group.header}${group.cacheHit ? " [cache]" : ""}${group.count > 1 ? ` (x${group.count})` : ""}`;
 		lines.push(...flattenBoxedBodyLines(title, termCols));
-		const detail = run.body.trim();
-		if (detail.length > 0) {
-			for (const line of flattenBoxedBodyLines(detail, termCols)) {
+		if (group.body.length > 0) {
+			for (const line of flattenBoxedBodyLines(group.body, termCols)) {
 				lines.push(`   ${line}`);
 			}
 		}
-		if (idx < runs.length - 1) {
+		if (idx < groups.length - 1) {
 			lines.push("");
 		}
 	}
@@ -194,7 +230,9 @@ export function flattenTranscript(
 					? getToolTranscriptGlyph(e.toolName ?? "")
 					: e.variant === "prep" || e.variant === "lifecycle"
 						? PIPELINE_STEP_GLYPH
-						: ASSISTANT_TRANSCRIPT_GLYPH;
+						: e.variant === "plan"
+							? "◆"
+							: ASSISTANT_TRANSCRIPT_GLYPH;
 			rows.push({
 				kind: "boxed_block",
 				id: e.id,

@@ -24,6 +24,8 @@ export function buildTranscriptNodes(
 		if (r.kind === "boxed_block") {
 			const bb = r;
 			const bodyDim = bb.variant !== "assistant";
+			const glyphColor = bb.variant === "plan" ? "magenta" : ACCENT;
+			const headerColor = bb.variant === "plan" ? "magenta" : ACCENT;
 			nodes.push(
 				<Box
 					key={`bb-${bb.id}-${outIdx}`}
@@ -37,9 +39,9 @@ export function buildTranscriptNodes(
 						flexDirection="column"
 					>
 						<Text wrap="truncate-end">
-							<Text color={ACCENT}>{bb.leadingGlyph}</Text>
+							<Text color={glyphColor}>{bb.leadingGlyph}</Text>
 							<Text> </Text>
-							<Text bold color={ACCENT}>
+							<Text bold color={headerColor}>
 								{bb.header}
 							</Text>
 							{bb.variant === "tool" && bb.cacheHit ? (
