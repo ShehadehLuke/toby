@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Key } from "ink";
+import { describe, expect, it } from "vitest";
 import { resolveDeleteShortcutAction } from "../src/ui/chat/input-keymap";
 
 function mkKey(overrides: Partial<Key>): Key {
@@ -22,7 +22,10 @@ function mkKey(overrides: Partial<Key>): Key {
 
 describe("chat input delete shortcut keymap", () => {
 	it("maps Option+Delete (meta+backspace) to previous-word delete", () => {
-		const action = resolveDeleteShortcutAction("", mkKey({ meta: true, backspace: true }));
+		const action = resolveDeleteShortcutAction(
+			"",
+			mkKey({ meta: true, backspace: true }),
+		);
 		expect(action).toBe("delete-word-backward");
 	});
 

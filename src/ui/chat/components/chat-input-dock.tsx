@@ -4,14 +4,14 @@ import type { Key } from "ink";
 import { ControlledMultilineInput } from "ink-multiline-input";
 import React, { useEffect, useRef, useState } from "react";
 import type { Persona } from "../../../config/index";
-import { resolveDeleteShortcutAction } from "../input-keymap";
-import { reconcileCursorIndex } from "../input-cursor";
 import {
 	ACCENT,
 	ACCENT_MODEL,
 	ACCENT_PROVIDER,
 	INPUT_BORDER,
 } from "../constants";
+import { reconcileCursorIndex } from "../input-cursor";
+import { resolveDeleteShortcutAction } from "../input-keymap";
 import type { SlashCommand } from "../slash-commands";
 
 function formatUsage(usage: LanguageModelUsage | null): string | null {

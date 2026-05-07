@@ -15,7 +15,10 @@ export function resolveDeleteShortcutAction(
 		return "delete-char";
 	}
 
-	if ((key.meta && key.backspace) || (key.meta && key.delete && !key.backspace)) {
+	if (
+		(key.meta && key.backspace) ||
+		(key.meta && key.delete && !key.backspace)
+	) {
 		return "delete-word-backward";
 	}
 
