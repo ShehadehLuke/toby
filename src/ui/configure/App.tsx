@@ -538,6 +538,15 @@ export function ConfigureApp({
 					}
 					doRefresh(values);
 				}
+				if (item.key === "ai.huggingface.add_model") {
+					setEditItem({
+						label: "Add Model",
+						kind: "value",
+						key: "ai.huggingface.model",
+						currentValue: "",
+					});
+					setScreen("edit");
+				}
 			} else if (item.kind === "delete") {
 				const personaName = item.key
 					.replace("personas.", "")
@@ -611,11 +620,11 @@ export function ConfigureApp({
 					}
 				}
 				if (editItem.key === "ai.huggingface.model") {
+					addDownloadedModel(newValue);
 					newValues = {
 						...newValues,
-						[editItem.key]: newValue,
+						[editItem.key]: "",
 					};
-					addDownloadedModel(newValue);
 				}
 
 				setValues(newValues);

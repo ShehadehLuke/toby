@@ -197,9 +197,8 @@ export function buildSettingsTree(
 						children: [
 							{
 								label: "Add Model",
-								kind: "value",
-								key: "ai.huggingface.model",
-								masked: false,
+								kind: "action",
+								key: "ai.huggingface.add_model",
 							},
 						],
 					},
