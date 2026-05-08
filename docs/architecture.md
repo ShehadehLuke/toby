@@ -14,6 +14,7 @@ src/
     gmail/
     todoist/
   config/                # Read/write ~/.toby/config.json and credentials.json
+  downloadedmodels/      # Helpers for Hugging Face model ids stored in config (see below)
   ai/                    # Shared AI helpers (chat, providers) — not integration-specific
   chat-pipeline/         # Shared turn runner, tool cache, chat event types
   personas/              # Named personas (model + instructions) used by AI flows
@@ -40,8 +41,8 @@ src/
 
 | Location | Role |
 | -------- | ---- |
-| `~/.toby/config.json` | Integration connection flags, personas |
-| `~/.toby/credentials.json` | API keys, OAuth client secrets, OpenAI token |
+| `~/.toby/config.json` | Integration connection flags, personas, Hugging Face model catalog (`huggingFaceModels`) |
+| `~/.toby/credentials.json` | API keys, OAuth client secrets, OpenAI API token (`ai.openai.token`) |
 | `~/.toby/chat.sqlite` | Chat session storage (sessions, messages, transcript) |
 
 Access is centralized in [`src/config/index.ts`](../src/config/index.ts). Integration modules should not hardcode paths; use the config helpers.
@@ -61,9 +62,11 @@ registry powers autocomplete, execution, and help text (see
 
 Shared pieces live under `src/ai/`:
 
-- [`chat.ts`](../src/ai/chat.ts) (under `src/ai/`) — model creation and tool-assisted chat helpers used by Gmail organize, `toby chat`, and similar flows.
+- [`chat.ts`](../src/ai/chat.ts) (under `src/ai/`) — model creation (`createModelForPersona`) and tool-assisted chat (`chatWithTools`) used by Gmail organize, `toby chat`, and similar flows. Supports **OpenAI** (AI SDK `createOpenAI` + persona model id) and **Hugging Face** via [`@browser-ai/transformers-js`](https://www.npmjs.com/package/@browser-ai/transformers-js) (`transformersJS(modelId)`) when a persona uses `provider: "huggingface"`.
 - [`ask-user-tool.ts`](../src/ai/ask-user-tool.ts) — shared **Ask User** tool merged into tool maps; optional handler for Ink (`toby chat` session) vs readline (`organize`, `--no-tui` chat).
 - [`ui/chat/session.tsx`](../src/ui/chat/session.tsx) — multi-turn Ink chat: keeps provider message history and wires `askUser` into the TUI.
-- [`providers.ts`](../src/ai/providers.ts) — provider/model lists for the configure UI.
+- [`providers.ts`](../src/ai/providers.ts) — `getAIProviders()` returns OpenAI + Hugging Face entries with **model id lists** for the configure UI (OpenAI list is fixed; Hugging Face list comes from config).
+
+**Hugging Face is not an `IntegrationModule`.** It is first-party AI configuration: persona `ai.provider` / `ai.model`, optional **downloaded model ids** in `config.json`, and helpers in [`src/downloadedmodels/index.ts`](../src/downloadedmodels/index.ts) (`getDownloadedModels`, `addDownloadedModel`, etc.). The configure tree (`src/ui/configure/items.ts`) exposes **AI → Hugging Face → Add Model** so new ids are appended to `huggingFaceModels` and appear in persona **AI Model** when provider is `huggingface`.
 
 Integration-specific **prompts** and **tool definitions** should live next to the integration (e.g. `src/integrations/gmail/prompts/`, `tools.ts`) so the core stays integration-agnostic.

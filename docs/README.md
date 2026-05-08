@@ -4,7 +4,7 @@ Human- and agent-oriented docs for this repository.
 
 | Doc | Description |
 | --- | ----------- |
-| [architecture.md](architecture.md) | Repo layout, CLI entry, config paths, AI/UI boundaries. |
+| [architecture.md](architecture.md) | Repo layout, CLI entry, config paths, OpenAI + Hugging Face AI wiring, UI boundaries. |
 | [commands.md](commands.md) | Shared CLI commands, including `config backup` and `config restore`. |
 | [integrations.md](integrations.md) | `IntegrationModule`, registry API, per-integration layout. |
 | [apple-mail.md](apple-mail.md) | macOS Apple Mail integration (local Mail.app, AppleScript tools). |

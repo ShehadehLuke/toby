@@ -6,7 +6,11 @@ This page documents the shared Toby CLI commands and the primary usage patterns.
 
 ### `toby config`
 
-Open the interactive configure UI (integrations, credentials, personas, AI provider/model).
+Open the interactive configure UI:
+
+- **Integrations** — per-module credentials from `IntegrationModule.getCredentialDescriptors()`.
+- **AI** — **OpenAI** (API token in `credentials.json`) and **Hugging Face** (use **Add Model** to append model ids to `config.json` → `huggingFaceModels`; pick `huggingface` and a model id under each **Persona**).
+- **Personas** — name, instructions, prompt mode, and per-persona **AI provider** / **AI model**.
 
 ### `toby config backup [destination]`
 

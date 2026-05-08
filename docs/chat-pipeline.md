@@ -27,6 +27,15 @@ Key files:
 - `src/chat-pipeline/run-turn.ts`: shared integration turn runner (`runIntegrationChatTurn`, `runSharedChatTurn`). `src/ui/chat/run-turn.ts` re-exports from this module.
 - `src/ai/chat.ts`: shared wrapper around AI SDK `streamText` / `generateText`, tool cache injection, lifecycle hooks, and abort signal propagation.
 
+## Persona model providers (OpenAI vs Hugging Face)
+
+The **main** chat turn (`runIntegrationChatTurn` → `chatWithTools`) uses whatever model `createModelForPersona(persona)` returns:
+
+- **`openai`** — requires `ai.openai.token` in `~/.toby/credentials.json`; model id is the OpenAI model name on the persona.
+- **`huggingface`** — uses `@browser-ai/transformers-js` with the persona’s `ai.model` string (typically a Hugging Face model id). Available ids for the configure UI come from `config.json` **`huggingFaceModels`**, maintained via **AI → Hugging Face → Add Model** and [`src/downloadedmodels/index.ts`](../src/downloadedmodels/index.ts).
+
+Pretreatment (see below) is a **separate** small OpenAI call and still expects an OpenAI API key when enabled; it does not use the Hugging Face persona path.
+
 ## Message construction (stable prefix vs dynamic content)
 
 The chat pipeline intentionally keeps the **system message** as stable as possible, and pushes per-session/per-turn content into **user messages**.
