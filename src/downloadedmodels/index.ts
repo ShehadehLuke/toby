@@ -1,3 +1,5 @@
+import { ModelRegistry } from "@huggingface/transformers";
+import chalk from "chalk";
 import { readConfig, writeConfig } from "../config/index";
 
 export function getDownloadedModels(): string[] {
@@ -10,7 +12,14 @@ export function addDownloadedModel(model: string): void {
 	writeConfig(config);
 }
 
-export function removeDownloadedModel(model: string): void {
+export async function removeDownloadedModel(model: string): Promise<void> {
+	try {
+		const result = await ModelRegistry.clear_cache(model);
+	} catch (error) {
+		console.error(chalk.red(error));
+		process.exitCode = 1;
+		return;
+	}
 	const config = readConfig();
 	config.huggingFaceModels = config.huggingFaceModels.filter(
 		(m) => m !== model,
