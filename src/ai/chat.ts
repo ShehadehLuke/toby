@@ -310,7 +310,7 @@ export async function chatWithTools(
 		});
 
 		const availability = await model.availability();
-		if (availability === "available") {
+		if (availability === "unavailable") {
 			throw new Error("Model is not available, or not supported.");
 		}
 		if (availability === "downloadable") {
