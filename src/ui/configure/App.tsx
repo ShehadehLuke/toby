@@ -7,7 +7,11 @@ import React, {
 	useRef,
 	type ReactNode,
 } from "react";
-import { addDownloadedModel } from "../../downloadedmodels";
+import {
+	addDownloadedModel,
+	addInferenceModel,
+	removeDownloadedModel,
+} from "../../huggingface/downloadedmodels";
 import { AppHeader } from "../chat/components/app-header";
 import { ACCENT, INPUT_BORDER } from "../chat/constants";
 import {
@@ -409,7 +413,9 @@ export function ConfigureApp({
 	const [values, setValues] =
 		useState<Record<string, string>>(credentialValues);
 	const [confirmMsg, setConfirmMsg] = useState("");
-	const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+	const [confirmAction, setConfirmAction] = useState<
+		(() => Promise<void> | void) | null
+	>(null);
 	const [statusMessage, setStatusMessage] = useState<string | undefined>(
 		undefined,
 	);
@@ -538,41 +544,88 @@ export function ConfigureApp({
 					}
 					doRefresh(values);
 				}
-				if (item.key === "ai.huggingface.add_model") {
+				if (item.key === "ai.huggingface.self_hosted_models.model") {
+					removeDownloadedModel(
+						item.key.replace("ai.huggingface.self_hosted_models.model.", ""),
+					);
+					const newValues = {
+						...values,
+						[editItem?.key ?? ""]: "",
+					};
+					setValues(newValues);
+					doRefresh(newValues);
+				}
+				if (item.key === "ai.huggingface.self_hosted_models.add_model") {
 					setEditItem({
 						label: "Add Model",
 						kind: "value",
-						key: "ai.huggingface.model",
+						key: "ai.huggingface.self_hosted_models.model",
+						currentValue: "",
+					});
+					setScreen("edit");
+				}
+				if (item.key === "ai.huggingface.inference_models.add_model") {
+					setEditItem({
+						label: "Add Model",
+						kind: "value",
+						key: "ai.huggingface.inference_models.model",
 						currentValue: "",
 					});
 					setScreen("edit");
 				}
 			} else if (item.kind === "delete") {
-				const personaName = item.key
-					.replace("personas.", "")
-					.replace("._delete", "");
-				setConfirmMsg(`Delete persona "${personaName}"?`);
-				setConfirmAction(() => () => {
-					callbacks.onDeletePersona(personaName);
-					const cleanedValues: Record<string, string> = {};
-					const deletedPrefix = `personas.${personaName}.`;
-					for (const [key, value] of Object.entries(values)) {
-						if (!key.startsWith(deletedPrefix)) {
-							cleanedValues[key] = value;
-						}
-					}
-					setValues(cleanedValues);
-					doRefresh(cleanedValues);
-					setPath((p) => p.slice(0, -1));
-					setSelectedIndex(0);
-					setScreen("nav");
-				});
-				setScreen("confirm");
+				if (item.key.startsWith("personas.")) {
+					handleDeletePersonaPress(item);
+				}
+				if (item.key.startsWith("ai.huggingface.model.")) {
+					handleDeleteModelPress(item);
+				}
 			}
 		},
-		[values, doRefresh, callbacks, tree],
+		[values, doRefresh, callbacks, tree, editItem?.key],
 	);
 
+	const handleDeletePersonaPress = (item: SettingsItem) => {
+		const personaName = item.key
+			.replace("personas.", "")
+			.replace("._delete", "");
+		setConfirmMsg(`Delete persona "${personaName}"?`);
+		setConfirmAction(() => () => {
+			callbacks.onDeletePersona(personaName);
+			const cleanedValues: Record<string, string> = {};
+			const deletedPrefix = `personas.${personaName}.`;
+			for (const [key, value] of Object.entries(values)) {
+				if (!key.startsWith(deletedPrefix)) {
+					cleanedValues[key] = value;
+				}
+			}
+			setValues(cleanedValues);
+			doRefresh(cleanedValues);
+			setPath((p) => p.slice(0, -1));
+			setSelectedIndex(0);
+			setScreen("nav");
+		});
+		setScreen("confirm");
+	};
+	const handleDeleteModelPress = (item: SettingsItem) => {
+		const modelName = item.key.replace("ai.huggingface.model.", "");
+		setConfirmMsg(`Delete model "${modelName}"?`);
+		setConfirmAction(() => async () => {
+			await removeDownloadedModel(
+				item.key.replace("ai.huggingface.model.", ""),
+			);
+			const cleanedValues: Record<string, string> = {};
+			for (const [key, value] of Object.entries(values)) {
+				if (!key.startsWith(`ai.huggingface.model.${modelName}`)) {
+					cleanedValues[key] = value;
+				}
+			}
+			setValues(cleanedValues);
+			doRefresh(cleanedValues);
+			setScreen("nav");
+		});
+		setScreen("confirm");
+	};
 	const handleEditorSubmit = useCallback(
 		(newValue: string) => {
 			if (editItem) {
@@ -619,12 +672,13 @@ export function ConfigureApp({
 						newValues = migratedValues;
 					}
 				}
-				if (editItem.key === "ai.huggingface.model") {
+				if (editItem.key === "ai.huggingface.self_hosted_models.model") {
 					addDownloadedModel(newValue);
-					newValues = {
-						...newValues,
-						[editItem.key]: "",
-					};
+					newValues = { ...newValues, [editItem.key]: "" };
+				}
+				if (editItem.key === "ai.huggingface.inference_models.model") {
+					addInferenceModel(newValue);
+					newValues = { ...newValues, [editItem.key]: "" };
 				}
 
 				setValues(newValues);

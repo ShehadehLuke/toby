@@ -1,5 +1,9 @@
 import { getDefaultPersonaName } from "../../config/index";
 import {
+	getDownloadedModels,
+	getInferenceModels,
+} from "../../huggingface/downloadedmodels";
+import {
 	getIntegrationModules,
 	getModulesForCategory,
 } from "../../integrations/index";
@@ -83,6 +87,20 @@ export function buildSettingsTree(
 	);
 
 	const currentDefault = getDefaultPersonaName();
+
+	const installedModels: SettingsItem[] = getDownloadedModels().map((m) => ({
+		label: m,
+		kind: "delete" as const,
+		key: `ai.huggingface.model.${m}`,
+	}));
+
+	const availableInferenceModels: SettingsItem[] = getInferenceModels().map(
+		(m) => ({
+			label: m,
+			kind: "delete" as const,
+			key: `ai.huggingface.inference_models.${m}`,
+		}),
+	);
 
 	const personaItems: SettingsItem[] = personas.map((p) => ({
 		label: p.name,
@@ -178,27 +196,71 @@ export function buildSettingsTree(
 				key: "ai",
 				children: [
 					{
-						label: "OpenAI",
+						label: "Remote Hosted Models",
 						kind: "section",
-						key: "ai.openai",
+						key: "ai.remote_hosted_models",
 						children: [
 							{
-								label: "API Token",
-								kind: "value",
-								key: "ai.openai.token",
-								masked: true,
+								label: "OpenAI",
+								kind: "section",
+								key: "ai.openai",
+								children: [
+									{
+										label: "API Token",
+										kind: "value",
+										key: "ai.openai.token",
+										masked: true,
+									},
+								],
+							},
+							{
+								label: "Hugging Face",
+								kind: "section",
+								key: "ai.huggingface.inference_models",
+								children: [
+									{
+										label: "Add Model",
+										kind: "action",
+										key: "ai.huggingface.inference_models.add_model",
+									},
+									{
+										label: "Available Models",
+										kind: "section",
+										key: "ai.huggingface.inference_models.installed_models",
+										children: availableInferenceModels,
+									},
+									{
+										label: "Access Token",
+										kind: "value",
+										key: "ai.huggingface.inference_models.access_token",
+										masked: true,
+									},
+								],
 							},
 						],
 					},
 					{
-						label: "Hugging Face",
+						label: "Self Hosted Models",
 						kind: "section",
-						key: "ai.huggingface",
+						key: "ai.self_hosted_models",
 						children: [
 							{
-								label: "Add Model",
-								kind: "action",
-								key: "ai.huggingface.add_model",
+								label: "Hugging Face",
+								kind: "section",
+								key: "ai.huggingface.self_hosted_models",
+								children: [
+									{
+										label: "Add Model",
+										kind: "action",
+										key: "ai.huggingface.self_hosted_models.add_model",
+									},
+									{
+										label: "Installed Models",
+										kind: "section",
+										key: "ai.huggingface.self_hosted_models.installed_models",
+										children: installedModels,
+									},
+								],
 							},
 						],
 					},

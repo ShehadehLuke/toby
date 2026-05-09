@@ -10,6 +10,10 @@ export function activityLineForChatEvent(ev: ChatEvent): string | null {
 			return "Preparing request…";
 		case "prep_end":
 			return "Ready for model…";
+		case "model_download_start":
+			return ev.header;
+		case "model_download_end":
+			return ev.detail;
 		case "lifecycle_start":
 			return ev.header;
 		case "lifecycle_end":

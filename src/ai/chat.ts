@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createOpenAI } from "@ai-sdk/openai";
-import { transformersJS } from "@browser-ai/transformers-js";
+import {
+	TransformersJSLanguageModel,
+	transformersJS,
+} from "@browser-ai/transformers-js";
+import { InferenceClient } from "@huggingface/inference";
 import {
 	type LanguageModelUsage,
 	type ModelMessage,
@@ -233,13 +237,31 @@ export function createModelForPersona(persona: Persona) {
 		const openai = createOpenAI({ apiKey: token });
 		return openai(persona.ai.model as string);
 	}
-	if (persona.ai.provider === "huggingface") {
+	if (persona.ai.provider === "huggingface-self-hosted") {
 		const model = persona.ai.model;
 		if (!model) {
 			throw new Error("Model not provided. Run `toby configure` to set it.");
 		}
 		const huggingface = transformersJS(model);
 		return huggingface;
+	}
+	if (persona.ai.provider === "huggingface-inference") {
+		const model = persona.ai.model;
+		const creds = readCredentials();
+		const accessToken = creds.ai?.huggingface?.accessToken;
+		if (!accessToken) {
+			throw new Error(
+				"Hugging Face access token not configured. Run `toby configure` to set it.",
+			);
+		}
+		if (!model) {
+			throw new Error("Model not provided. Run `toby configure` to set it.");
+		}
+		const huggingface = createOpenAI({
+			apiKey: accessToken,
+			baseURL: "https://router.huggingface.co/v1",
+		});
+		return huggingface(model);
 	}
 
 	throw new Error(
@@ -308,15 +330,14 @@ export async function chatWithTools(
 			providerOptions: providerOptions as never,
 			abortSignal,
 		});
-
-		const availability = await model.availability();
-		if (availability === "unavailable") {
-			throw new Error("Model is not available, or not supported.");
-		}
-		if (availability === "downloadable") {
-			const modelDownloadId = randomUUID();
-			await model.createSessionWithProgress(
-				({ progress }: { progress: number }) => {
+		if (model instanceof TransformersJSLanguageModel) {
+			const availability = await model.availability();
+			if (availability === "unavailable") {
+				throw new Error("Model is not available, or not supported.");
+			}
+			if (availability === "downloadable") {
+				const modelDownloadId = randomUUID();
+				await model.createSessionWithProgress((progress: number) => {
 					if (onChatEvent) {
 						onChatEvent({
 							type: "model_download_start",
@@ -325,20 +346,9 @@ export async function chatWithTools(
 							header: `Downloading model... ${Math.round(progress * 100)}%`,
 						});
 					}
-				},
-				({ progress }: { progress: number }) => {
-					if (onChatEvent) {
-						onChatEvent({
-							type: "model_download_end",
-							id: modelDownloadId,
-							seq: nextSeq(),
-							detail: `Model downloaded. ${Math.round(progress * 100)}%`,
-						});
-					}
-				},
-			);
+				});
+			}
 		}
-
 		const modelRequestId = randomUUID();
 		if (onChatEvent) {
 			onChatEvent({

@@ -13,7 +13,7 @@ import {
 import {
 	addDownloadedModel,
 	getDownloadedModels,
-} from "../../downloadedmodels";
+} from "../../huggingface/downloadedmodels";
 import { getIntegrationModules } from "../../integrations/index";
 import {
 	ALL_PROVIDER_CATEGORIES,
@@ -59,6 +59,10 @@ export function createConfigureSession(): ConfigureSession {
 	}
 	if (creds.ai?.openai?.token) {
 		credentialValues["ai.openai.token"] = creds.ai?.openai?.token ?? "";
+	}
+	if (creds.ai?.huggingface?.accessToken) {
+		credentialValues["ai.huggingface.inference_models.access_token"] =
+			creds.ai?.huggingface?.accessToken ?? "";
 	}
 	for (const p of config.personas) {
 		credentialValues[`personas.${p.name}.name`] = p.name;
@@ -159,9 +163,14 @@ function buildCredentialsFromValues(
 
 	const openAIToken =
 		values["ai.openai.token"] ?? creds.ai?.openai?.token ?? "";
+	const huggingfaceAccessToken =
+		values["ai.huggingface.inference_models.access_token"] ??
+		creds.ai?.huggingface?.accessToken ??
+		"";
 	next = mergeCredentials(next, {
 		ai: {
 			openai: { token: openAIToken },
+			huggingface: { accessToken: huggingfaceAccessToken },
 		},
 	});
 	return next;

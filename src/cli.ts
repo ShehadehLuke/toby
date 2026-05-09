@@ -10,10 +10,13 @@ import { registerSessionsCommand } from "./commands/sessions";
 import { registerStatusCommand } from "./commands/status";
 import { registerSummarizeCommand } from "./commands/summarize";
 import { registerUpgradeCommand } from "./commands/upgrade";
+import { setHuggingFaceCacheDir } from "./huggingface/envconfig";
 import { getIntegrationModules } from "./integrations/index";
 
 const program = new Command();
 const cliVersion = resolveCliVersion();
+
+setHuggingFaceCacheDir();
 
 program
 	.name("toby")

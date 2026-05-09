@@ -63,7 +63,8 @@ interface TobyConfig {
 	personas: Persona[];
 	defaultPersona?: string;
 	defaultProviders?: Partial<Record<ProviderCategory, string>>;
-	huggingFaceModels: string[];
+	huggingFaceSelfHostedModels: string[];
+	huggingFaceInferenceModels: string[];
 }
 
 export interface GmailCredentials {
@@ -101,6 +102,7 @@ interface AzureAdResolvedCredentials {
 
 interface AICredentials {
 	openai?: { token: string };
+	huggingface?: { accessToken: string };
 }
 
 export interface CredentialsFile {
@@ -128,7 +130,12 @@ export function readConfig(): TobyConfig {
 	const configPath = getConfigPath();
 	ensureTobyDir();
 	if (!fs.existsSync(configPath)) {
-		return { integrations: {}, personas: [], huggingFaceModels: [] };
+		return {
+			integrations: {},
+			personas: [],
+			huggingFaceSelfHostedModels: [],
+			huggingFaceInferenceModels: [],
+		};
 	}
 	const raw = fs.readFileSync(configPath, "utf-8");
 	const parsed = JSON.parse(raw) as Partial<TobyConfig>;
@@ -145,7 +152,8 @@ export function readConfig(): TobyConfig {
 		personas,
 		defaultPersona: parsed.defaultPersona,
 		defaultProviders: parsed.defaultProviders,
-		huggingFaceModels: parsed.huggingFaceModels ?? [],
+		huggingFaceSelfHostedModels: parsed.huggingFaceSelfHostedModels ?? [],
+		huggingFaceInferenceModels: parsed.huggingFaceInferenceModels ?? [],
 	};
 }
 

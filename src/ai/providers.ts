@@ -1,4 +1,7 @@
-import { getDownloadedModels } from "../downloadedmodels";
+import {
+	getDownloadedModels,
+	getInferenceModels,
+} from "../huggingface/downloadedmodels";
 
 interface AIProviderInfo {
 	id: string;
@@ -25,9 +28,14 @@ export function getAIProviders(): AIProviderInfo[] {
 			],
 		},
 		{
-			id: "huggingface",
-			displayName: "Hugging Face",
+			id: "huggingface-self-hosted",
+			displayName: "Hugging Face Self Hosted",
 			models: getDownloadedModels(),
+		},
+		{
+			id: "huggingface-inference",
+			displayName: "Hugging Face Inference",
+			models: getInferenceModels(),
 		},
 	];
 }

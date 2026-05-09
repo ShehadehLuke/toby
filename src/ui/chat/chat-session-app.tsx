@@ -127,15 +127,6 @@ type PersonaPickerRow =
 	| { readonly kind: "add" }
 	| { readonly kind: "persona"; readonly persona: Persona };
 
-type HuggingFaceModelAddRow = {
-	readonly kind: "add";
-	readonly model: string;
-};
-interface HuggingFaceModelAddState {
-	readonly rows: readonly HuggingFaceModelAddRow[];
-	readonly cursorIndex: number;
-}
-
 interface PersonaPickerState {
 	readonly rows: readonly PersonaPickerRow[];
 	readonly cursorIndex: number;
@@ -252,8 +243,6 @@ export function ChatSessionApp({
 	const [personaPicker, setPersonaPicker] = useState<PersonaPickerState | null>(
 		null,
 	);
-	const [huggingFaceModelAdd, setHuggingFaceModelAdd] =
-		useState<HuggingFaceModelAddState | null>(null);
 	const [activePersona, setActivePersona] = useState(() => persona);
 	const activePersonaRef = useRef(activePersona);
 	const [activePlan, setActivePlan] = useState<Plan | null>(null);
@@ -288,7 +277,6 @@ export function ChatSessionApp({
 		multiPicker: null as MultiPickerState | null,
 		sessionPicker: null as SessionPickerState | null,
 		personaPicker: null as PersonaPickerState | null,
-		huggingFaceModelAdd: null as HuggingFaceModelAddState | null,
 	});
 
 	const allDisplayRows = useMemo((): DisplayRow[] => {
@@ -436,7 +424,6 @@ export function ChatSessionApp({
 			multiPicker,
 			sessionPicker,
 			personaPicker,
-			huggingFaceModelAdd,
 		};
 	}, [
 		askModal,
@@ -447,7 +434,6 @@ export function ChatSessionApp({
 		multiPicker,
 		sessionPicker,
 		personaPicker,
-		huggingFaceModelAdd,
 	]);
 
 	const startFreshSession = useCallback(
