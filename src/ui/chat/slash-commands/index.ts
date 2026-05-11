@@ -8,6 +8,7 @@ import { newSlashCommand } from "./new";
 import { personaSlashCommand } from "./persona";
 import { planSlashCommand } from "./plan";
 import { sessionsSlashCommand } from "./sessions";
+import { terminalSlashCommand } from "./terminal";
 import type { SlashCommand } from "./types";
 
 interface SlashCommandResolution {
@@ -27,6 +28,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	personaSlashCommand,
 	newSlashCommand,
 	sessionsSlashCommand,
+	terminalSlashCommand,
 	exitSlashCommand,
 ];
 
