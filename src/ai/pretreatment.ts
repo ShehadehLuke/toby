@@ -96,15 +96,31 @@ function getPretreatmentModelId(): string {
 }
 
 function createPretreatmentModel() {
-	const creds = readCredentials();
-	const token = creds.ai?.openai?.token;
-	if (!token) {
-		throw new Error(
-			"OpenAI API token not configured. Run `toby configure` to set it.",
-		);
+	if (getPretreatmentModelId().startsWith("openai/")) {
+		const creds = readCredentials();
+		const token = creds.ai?.openai?.token;
+		if (!token) {
+			throw new Error(
+				"OpenAI API token not configured. Run `toby configure` to set it.",
+			);
+		}
+		const openai = createOpenAI({ apiKey: token });
+		return openai(getPretreatmentModelId());
 	}
-	const openai = createOpenAI({ apiKey: token });
-	return openai(getPretreatmentModelId());
+	if (getPretreatmentModelId().startsWith("huggingface/")) {
+		const creds = readCredentials();
+		const token = creds.ai?.huggingface?.accessToken;
+		if (!token) {
+			throw new Error(
+				"Hugging Face access token not configured. Run `toby configure` to set it.",
+			);
+		}
+		const huggingface = createOpenAI({ apiKey: token });
+		return huggingface(getPretreatmentModelId());
+	}
+	throw new Error(
+		"Invalid pretreatment model ID. Must start with 'openai/' or 'huggingface/'.",
+	);
 }
 
 /** Whether pretreatment is globally disabled via env. */
