@@ -1,17 +1,13 @@
 import type { LanguageModelUsage } from "ai";
-import { Box, Text, useInput } from "ink";
-import type { Key } from "ink";
-import { ControlledMultilineInput } from "ink-multiline-input";
-import React, { useEffect, useRef, useState } from "react";
+import { Box, Text } from "ink";
+import React, { useMemo } from "react";
 import type { Persona } from "../../../config/index";
+import { MultilineTextEdit, newlineHintText } from "../../shared";
 import {
-	ACCENT,
-	ACCENT_MODEL,
-	ACCENT_PROVIDER,
-	INPUT_BORDER,
-} from "../constants";
-import { reconcileCursorIndex } from "../input-cursor";
-import { resolveDeleteShortcutAction } from "../input-keymap";
+	detectTerminalProfile,
+	inputModeLabel,
+} from "../../shared/terminal-profile";
+import { ACCENT, ACCENT_MODEL, ACCENT_PROVIDER } from "../constants";
 import type { SlashCommand } from "../slash-commands";
 
 function formatUsage(usage: LanguageModelUsage | null): string | null {
@@ -106,232 +102,27 @@ export function ChatInputDock(props: ChatInputDockProps) {
 		selectedSlashCommand,
 	} = props;
 
-	const pendingBackslashRef = useRef(false);
-	const [cursorIndex, setCursorIndex] = useState(input.length);
-	const previousCursorResetTokenRef = useRef(cursorResetToken);
-
-	useEffect(() => {
-		const forceResetToEnd =
-			previousCursorResetTokenRef.current !== cursorResetToken;
-		previousCursorResetTokenRef.current = cursorResetToken;
-		setCursorIndex((prev) =>
-			reconcileCursorIndex({
-				currentCursorIndex: prev,
-				nextInputLength: input.length,
-				forceResetToEnd,
-			}),
-		);
-	}, [cursorResetToken, input.length]);
-
-	const deleteWordBackward = () => {
-		if (cursorIndex <= 0) {
-			return;
-		}
-		let start = cursorIndex;
-		while (start > 0 && /\s/.test(input[start - 1] ?? "")) {
-			start--;
-		}
-		while (start > 0 && !/\s/.test(input[start - 1] ?? "")) {
-			start--;
-		}
-		onInputChange(input.slice(0, start) + input.slice(cursorIndex));
-		setCursorIndex(start);
-	};
-
-	const insertAtCursor = (text: string) => {
-		const next = input.slice(0, cursorIndex) + text + input.slice(cursorIndex);
-		onInputChange(next);
-		setCursorIndex(cursorIndex + text.length);
-	};
-
-	const isActive = !inputDisabled;
 	const placeholderText = placeholder ?? 'Try "What needs my attention today?"';
 	const showStaticPlaceholder =
 		(showPlaceholderWhenEmpty ?? false) && input.length === 0;
 	const contextFill = formatContextFill(modelLabel, lastUsage);
-	useInput(
-		(rawInput, rawKey) => {
-			if (!isActive) {
-				return;
-			}
-
-			const processInput = (typedInput: string, key: Key) => {
-				// Ink maps CR (`\r`) to `key.return` but LF (`\n`) is parsed as `enter`, so
-				// `key.return` stays false — plain Enter then falls through and inserts `\n`.
-				const isEnter =
-					key.return || typedInput === "\n" || typedInput === "\r";
-				const shouldSubmit = isEnter && !key.shift && !key.meta && !key.ctrl;
-				const shouldNewline = isEnter && (key.shift || key.meta || key.ctrl);
-
-				if (shouldSubmit) {
-					onInputSubmit(input);
-					return;
-				}
-
-				if (shouldNewline) {
-					insertAtCursor("\n");
-					return;
-				}
-
-				// Ignore stray newline chars from Enter-like sequences not handled above.
-				if (typedInput === "\r" || typedInput === "\n") {
-					return;
-				}
-
-				if (
-					key.tab ||
-					(key.shift && key.tab) ||
-					(key.ctrl && typedInput === "c")
-				) {
-					return;
-				}
-
-				if (key.upArrow) {
-					const lines = input.split("\n");
-					let currentLineIndex = 0;
-					let currentPos = 0;
-					let col = 0;
-					for (let i = 0; i < lines.length; i++) {
-						const line = lines[i];
-						const lineLen = line?.length ?? 0;
-						const lineEnd = currentPos + lineLen;
-						if (cursorIndex >= currentPos && cursorIndex <= lineEnd) {
-							currentLineIndex = i;
-							col = cursorIndex - currentPos;
-							break;
-						}
-						currentPos = lineEnd + 1;
-					}
-					if (currentLineIndex > 0) {
-						const targetLineIndex = currentLineIndex - 1;
-						const targetLineLen = lines[targetLineIndex]?.length ?? 0;
-						const newCol = Math.min(col, targetLineLen);
-						let newIndex = 0;
-						for (let i = 0; i < targetLineIndex; i++) {
-							newIndex += (lines[i]?.length ?? 0) + 1;
-						}
-						setCursorIndex(newIndex + newCol);
-					}
-					return;
-				}
-
-				if (key.downArrow) {
-					const lines = input.split("\n");
-					let currentLineIndex = 0;
-					let currentPos = 0;
-					let col = 0;
-					for (let i = 0; i < lines.length; i++) {
-						const line = lines[i];
-						const lineLen = line?.length ?? 0;
-						const lineEnd = currentPos + lineLen;
-						if (cursorIndex >= currentPos && cursorIndex <= lineEnd) {
-							currentLineIndex = i;
-							col = cursorIndex - currentPos;
-							break;
-						}
-						currentPos = lineEnd + 1;
-					}
-					if (currentLineIndex < lines.length - 1) {
-						const targetLineIndex = currentLineIndex + 1;
-						const targetLineLen = lines[targetLineIndex]?.length ?? 0;
-						const newCol = Math.min(col, targetLineLen);
-						let newIndex = 0;
-						for (let i = 0; i < targetLineIndex; i++) {
-							newIndex += (lines[i]?.length ?? 0) + 1;
-						}
-						setCursorIndex(newIndex + newCol);
-					}
-					return;
-				}
-
-				if (key.leftArrow) {
-					setCursorIndex(Math.max(0, cursorIndex - 1));
-					return;
-				}
-
-				if (key.rightArrow) {
-					setCursorIndex(Math.min(input.length, cursorIndex + 1));
-					return;
-				}
-
-				// Terminal-friendly fallback for deleting previous word.
-				if (key.ctrl && typedInput === "w") {
-					deleteWordBackward();
-					return;
-				}
-
-				const deleteAction = resolveDeleteShortcutAction(typedInput, key);
-				if (deleteAction === "delete-word-backward") {
-					deleteWordBackward();
-					return;
-				}
-				if (deleteAction === "delete-char") {
-					if (cursorIndex > 0) {
-						onInputChange(
-							input.slice(0, cursorIndex - 1) + input.slice(cursorIndex),
-						);
-						setCursorIndex(cursorIndex - 1);
-					}
-					return;
-				}
-
-				if (typedInput) {
-					insertAtCursor(typedInput);
-				}
-			};
-
-			if (pendingBackslashRef.current) {
-				pendingBackslashRef.current = false;
-				if (rawKey.return) {
-					// Terminal fallback: some Shift+Enter sequences emit "\" first.
-					processInput("", { ...rawKey, meta: true } as Key);
-					return;
-				}
-				processInput("\\", {} as Key);
-			}
-
-			if (rawInput === "\\") {
-				pendingBackslashRef.current = true;
-				return;
-			}
-
-			processInput(rawInput, rawKey);
-		},
-		{ isActive },
-	);
+	const terminalProfile = useMemo(() => detectTerminalProfile(), []);
+	const modeLabel = inputModeLabel(terminalProfile);
+	const newlineHint = newlineHintText(terminalProfile);
 
 	return (
 		<Box marginTop={0} flexShrink={0} flexDirection="column" width={termCols}>
-			<Box
-				flexDirection="column"
-				borderStyle="single"
-				borderColor={INPUT_BORDER}
+			<MultilineTextEdit
 				width={termCols}
-			>
-				<Box paddingX={1} paddingY={0} width={termCols - 2} flexDirection="row">
-					<Box flexShrink={0}>
-						<Text color={ACCENT} bold>
-							{"> "}
-						</Text>
-					</Box>
-					<Box flexGrow={1} flexDirection="column">
-						{showStaticPlaceholder ? (
-							<Text dimColor wrap="truncate-end">
-								{placeholderText}
-							</Text>
-						) : (
-							<ControlledMultilineInput
-								value={input}
-								cursorIndex={cursorIndex}
-								rows={1}
-								maxRows={8}
-								focus={!inputDisabled}
-								placeholder={placeholderText}
-							/>
-						)}
-					</Box>
-				</Box>
-			</Box>
+				value={input}
+				onChange={onInputChange}
+				onSubmit={onInputSubmit}
+				focus={!inputDisabled}
+				cursorResetToken={cursorResetToken}
+				placeholder={placeholderText}
+				accentColor={ACCENT}
+				showStaticPlaceholder={showStaticPlaceholder}
+			/>
 			{slashSuggestions.length > 0 ? (
 				<Box marginTop={0} paddingX={1} flexDirection="column">
 					{slashSuggestions.map((item) => {
@@ -350,8 +141,7 @@ export function ChatInputDock(props: ChatInputDockProps) {
 			) : null}
 			<Box marginTop={0} paddingX={1}>
 				<Text dimColor wrap="truncate-end">
-					Type / to see commands · Shift+Enter newline · Enter to run · Ctrl+C
-					to quit
+					Type / to see commands · {newlineHint} · Enter to run · Ctrl+C to quit
 				</Text>
 			</Box>
 			<Box
@@ -402,6 +192,10 @@ export function ChatInputDock(props: ChatInputDockProps) {
 								{" · "}dry-run
 							</Text>
 						) : null}
+						<Text dimColor wrap="truncate-end">
+							{" · "}
+							{modeLabel}
+						</Text>
 					</Box>
 				</Box>
 				<Box flexShrink={0}>
