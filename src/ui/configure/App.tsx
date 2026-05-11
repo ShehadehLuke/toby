@@ -1,4 +1,5 @@
 import { Box, Text, render, useApp, useInput } from "ink";
+import { ControlledMultilineInput } from "ink-multiline-input";
 import React, {
 	useState,
 	useCallback,
@@ -8,6 +9,11 @@ import React, {
 } from "react";
 import { AppHeader } from "../chat/components/app-header";
 import { ACCENT, INPUT_BORDER } from "../chat/constants";
+import {
+	detectTerminalProfile,
+	resolveKittyKeyboardMode,
+	useMultilineInput,
+} from "../shared";
 import type { SettingsItem } from "./items";
 
 interface NavigatorProps {
@@ -209,69 +215,15 @@ interface MultilineEditorProps {
 }
 
 function MultilineEditor({ item, onSubmit, onCancel }: MultilineEditorProps) {
-	const [lines, setLines] = useState(() => {
-		const initial = item.currentValue ?? "";
-		return initial === "" ? [""] : initial.split("\n");
-	});
-	const [cursorLine, setCursorLine] = useState(lines.length - 1);
-	const maxVisibleLines = 8;
-	const visibleLines = lines.slice(
-		Math.max(0, cursorLine - maxVisibleLines + 1),
-		cursorLine + 1,
-	);
+	const [value, setValue] = useState(item.currentValue ?? "");
 
-	useInput((input, key) => {
-		if (key.ctrl && input === "s") {
-			onSubmit(lines.join("\n"));
-			return;
-		}
-		if (key.escape) {
-			onCancel();
-			return;
-		}
-		if (key.backspace || key.delete) {
-			setLines((prev) => {
-				const updated = [...prev];
-				const currentLine = updated[cursorLine];
-				if (currentLine.length > 0) {
-					updated[cursorLine] = currentLine.slice(0, -1);
-				} else if (cursorLine > 0) {
-					updated[cursorLine - 1] = updated[cursorLine - 1] + currentLine;
-					updated.splice(cursorLine, 1);
-					setCursorLine(cursorLine - 1);
-				}
-				return updated;
-			});
-			return;
-		}
-		if (key.return) {
-			setLines((prev) => {
-				const updated = [...prev];
-				const currentLine = updated[cursorLine];
-				const before = currentLine.slice(0, currentLine.length);
-				const after = "";
-				updated[cursorLine] = before;
-				updated.splice(cursorLine + 1, 0, after);
-				return updated;
-			});
-			setCursorLine((c) => c + 1);
-			return;
-		}
-		if (key.upArrow) {
-			setCursorLine((c) => Math.max(0, c - 1));
-			return;
-		}
-		if (key.downArrow) {
-			setCursorLine((c) => Math.min(lines.length - 1, c + 1));
-			return;
-		}
-		if (input && !key.ctrl && !key.meta) {
-			setLines((prev) => {
-				const updated = [...prev];
-				updated[cursorLine] = updated[cursorLine] + input;
-				return updated;
-			});
-		}
+	const { cursorIndex } = useMultilineInput({
+		value,
+		onChange: setValue,
+		onSubmit,
+		active: true,
+		enterMode: "newline",
+		onCancel,
 	});
 
 	return (
@@ -288,20 +240,15 @@ function MultilineEditor({ item, onSubmit, onCancel }: MultilineEditorProps) {
 					Edit: {item.label}
 				</Text>
 			</Box>
-			<Box paddingX={1} flexDirection="column">
-				{visibleLines.map((line, i) => {
-					const actualLineIndex = cursorLine - visibleLines.length + i + 1;
-					const isCurrentLine = actualLineIndex === cursorLine;
-					return (
-						<Box key={`${actualLineIndex}`}>
-							<Text dimColor>{isCurrentLine ? " ▸ " : "   "}</Text>
-							<Text color="yellow">
-								{line}
-								{isCurrentLine ? <Text dimColor>_</Text> : ""}
-							</Text>
-						</Box>
-					);
-				})}
+			<Box paddingX={1}>
+				<ControlledMultilineInput
+					value={value}
+					cursorIndex={cursorIndex}
+					rows={1}
+					maxRows={8}
+					focus
+					placeholder="Enter value…"
+				/>
 			</Box>
 		</ConfigureFrame>
 	);
@@ -754,6 +701,7 @@ export function runConfigureUI(
 		onDeletePersona: (name: string) => void;
 	},
 ): void {
+	const profile = detectTerminalProfile();
 	render(
 		<ConfigureApp
 			root={root}
@@ -762,5 +710,11 @@ export function runConfigureUI(
 			refreshTree={refreshTree}
 			callbacks={callbacks}
 		/>,
+		{
+			kittyKeyboard: {
+				mode: resolveKittyKeyboardMode(profile),
+				flags: ["disambiguateEscapeCodes"],
+			},
+		},
 	);
 }
