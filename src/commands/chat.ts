@@ -3,7 +3,11 @@ import type { Command } from "commander";
 import { wrapUserPromptWithPretreatment } from "../ai/pretreatment";
 import type { Persona } from "../config/index";
 import type { IntegrationModule } from "../integrations/types";
-import { listPersonas, resolvePersona } from "../personas/index";
+import {
+	DEFAULT_CHAT_PERSONA,
+	listPersonas,
+	resolvePersona,
+} from "../personas/index";
 import { loadLocalSkills } from "../skills/index";
 import {
 	injectSkillBodiesIntoFirstSystemMessage,
@@ -25,16 +29,6 @@ interface ChatCommandOptions {
 	debug?: boolean;
 	integration?: string[];
 }
-
-const DEFAULT_CHAT_PERSONA: Persona = {
-	name: "default-chat",
-	instructions: "",
-	promptMode: "add",
-	ai: {
-		provider: "openai",
-		model: "gpt-5-mini",
-	},
-};
 
 function collectIntegration(value: string, previous: string[] = []): string[] {
 	return [...previous, value];
