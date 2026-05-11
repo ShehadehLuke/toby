@@ -339,7 +339,7 @@ describe("flattenTranscript boxed_step", () => {
 			type: "lifecycle_start",
 			id,
 			seq: 1,
-			header: "Preparing integration context…",
+			header: "Preparing Session…",
 		} satisfies ChatEvent);
 		expect(t).toHaveLength(1);
 		expect(t[0]?.kind).toBe("boxed_step");
@@ -350,13 +350,13 @@ describe("flattenTranscript boxed_step", () => {
 			type: "lifecycle_end",
 			id,
 			seq: 2,
-			detail: "Integration prompt ready.",
+			detail: "Session Ready.",
 		} satisfies ChatEvent);
 		expect(t).toHaveLength(1);
 		const row = t[0];
 		expect(row?.kind).toBe("boxed_step");
 		if (row?.kind === "boxed_step") {
-			expect(row.body).toBe("Integration prompt ready.");
+			expect(row.body).toBe("Session Ready.");
 		}
 	});
 

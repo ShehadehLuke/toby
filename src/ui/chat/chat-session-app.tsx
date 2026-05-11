@@ -786,7 +786,7 @@ export function ChatSessionApp({
 					type: "lifecycle_start",
 					id: bootCtxLifecycleId,
 					seq: bootSeq(),
-					header: "Preparing integration context…",
+					header: "Preparing Session…",
 				});
 				let initial = await prepareChatSessionMessages(
 					selectedModules,
@@ -805,7 +805,7 @@ export function ChatSessionApp({
 					type: "lifecycle_end",
 					id: bootCtxLifecycleId,
 					seq: bootSeq(),
-					detail: "Integration prompt ready.",
+					detail: "Session Ready.",
 				});
 				setMessages(initial);
 				const userEntries: TranscriptEntry[] = sessionPrompt.trim()
@@ -1714,7 +1714,7 @@ export function ChatSessionApp({
 				return;
 			}
 
-			if (key.ctrl && ch === "c") {
+			if ((key.ctrl && ch === "c") || ch === "\x03") {
 				exit();
 				return;
 			}
