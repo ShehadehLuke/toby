@@ -242,7 +242,12 @@ export function createModelForPersona(persona: Persona) {
 		if (!model) {
 			throw new Error("Model not provided. Run `toby configure` to set it.");
 		}
-		const huggingface = transformersJS(model);
+		const huggingface = transformersJS(model, {
+			device: "auto",
+			worker: new Worker(new URL("./worker.ts", import.meta.url), {
+				type: "module",
+			}),
+		});
 		return huggingface;
 	}
 	if (persona.ai.provider === "huggingface-inference") {
