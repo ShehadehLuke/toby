@@ -7,7 +7,12 @@ import React, {
 	useState,
 } from "react";
 import { reconcileCursorIndex } from "../chat/input-cursor";
-import { resolveDeleteShortcutAction } from "../chat/input-keymap";
+import {
+	resolveDeleteShortcutAction,
+	resolveWordNavigationAction,
+	wordBackwardIndex,
+	wordForwardIndex,
+} from "../chat/input-keymap";
 import {
 	type TerminalProfile,
 	detectTerminalProfile,
@@ -138,13 +143,7 @@ export function useMultilineInput(
 	const deleteWordBackward = useCallback(() => {
 		const ci = cursorIndexRef.current;
 		if (ci <= 0) return;
-		let start = ci;
-		while (start > 0 && /\s/.test(value[start - 1] ?? "")) {
-			start--;
-		}
-		while (start > 0 && !/\s/.test(value[start - 1] ?? "")) {
-			start--;
-		}
+		const start = wordBackwardIndex(value, ci);
 		onChange(value.slice(0, start) + value.slice(ci));
 		updateCursorIndex(start);
 	}, [value, onChange, updateCursorIndex]);
@@ -350,6 +349,24 @@ export function useMultilineInput(
 					}
 					return ci;
 				});
+				return;
+			}
+
+			const wordNav = resolveWordNavigationAction(typedInput, key);
+			if (wordNav === "word-backward") {
+				updateCursorIndex((ci) => wordBackwardIndex(value, ci));
+				return;
+			}
+			if (wordNav === "word-forward") {
+				updateCursorIndex((ci) => wordForwardIndex(value, ci));
+				return;
+			}
+			if (wordNav === "line-start") {
+				updateCursorIndex(0);
+				return;
+			}
+			if (wordNav === "line-end") {
+				updateCursorIndex(value.length);
 				return;
 			}
 
