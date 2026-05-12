@@ -458,6 +458,55 @@ export function ChatSessionApp({
 			let activeToolCalls = 0;
 			let implicitPlanCreated = false;
 			turnToolCallsRef.current = [];
+			const buildImplicitPlan = (): Plan => {
+				const now = new Date().toISOString();
+				return {
+					id: "implicit-turn-plan",
+					sessionId: sid,
+					goal: "Answering request",
+					phases: [
+						{
+							id: "implicit-gather-information",
+							label: "Gather information",
+							description: "Run the tools needed to collect request context.",
+							status: activeToolCalls > 0 ? "in_progress" : "completed",
+							order: 0,
+							addedAt: now,
+						},
+						{
+							id: "implicit-answer-request",
+							label: "Answer request",
+							description:
+								"Use the gathered information to complete the prompt.",
+							status: activeToolCalls > 0 ? "pending" : "in_progress",
+							order: 1,
+							addedAt: now,
+						},
+					],
+					status: "in_progress",
+					createdAt: now,
+					updatedAt: now,
+				};
+			};
+			const updateImplicitPlanToolStatus = () => {
+				if (!implicitPlanCreated) return;
+				setActivePlan((prev) => {
+					if (!prev || prev.id !== "implicit-turn-plan") return prev;
+					const nextStatuses =
+						activeToolCalls > 0
+							? (["in_progress", "pending"] as const)
+							: (["completed", "in_progress"] as const);
+					const phases = prev.phases.map((phase, i) => ({
+						...phase,
+						status: nextStatuses[i] ?? phase.status,
+					}));
+					return {
+						...prev,
+						phases,
+						updatedAt: new Date().toISOString(),
+					};
+				});
+			};
 			const turnStartMs = Date.now();
 			const eventLogSink = createChatEventLogSink(sid);
 			const nextLocalSeq = () => {
@@ -516,51 +565,22 @@ export function ChatSessionApp({
 						onToolCallStart: ({ toolName }) => {
 							activeToolCalls += 1;
 							setActivityLine(formatToolStatusLine(toolName));
-							const displayLabel = getToolDisplayLabel(toolName);
 							turnToolCallsRef.current = [
 								...turnToolCallsRef.current,
 								{ name: toolName, status: "in_progress" as const },
 							];
-							// When 2+ tools are called, create an implicit plan for the status bar
+							// If a model turn uses multiple tools without an explicit plan,
+							// show human-readable stages rather than one phase per tool call.
 							if (
 								!implicitPlanCreated &&
 								turnToolCallsRef.current.length >= 2
 							) {
 								implicitPlanCreated = true;
-								const phases = turnToolCallsRef.current.map((tc, i) => ({
-									id: `impl-phase-${i}`,
-									label: getToolDisplayLabel(tc.name),
-									description: tc.name,
-									status: tc.status as "in_progress" | "completed",
-									order: i,
-									addedAt: new Date().toISOString(),
-								}));
-								const plan: Plan = {
-									id: "implicit-turn-plan",
-									sessionId: sid,
-									goal: "Executing multi-step actions",
-									phases,
-									status: "in_progress",
-									createdAt: new Date().toISOString(),
-									updatedAt: new Date().toISOString(),
-								};
+								const plan = buildImplicitPlan();
 								setActivePlan(plan);
 								activePlanRef.current = plan;
 							} else if (implicitPlanCreated) {
-								// Add new phase to existing implicit plan
-								const newLabel = getToolDisplayLabel(toolName);
-								setActivePlan((prev) => {
-									if (!prev || prev.id !== "implicit-turn-plan") return prev;
-									const newPhase = {
-										id: `impl-phase-${turnToolCallsRef.current.length - 1}`,
-										label: newLabel,
-										description: toolName,
-										status: "in_progress" as const,
-										order: prev.phases.length,
-										addedAt: new Date().toISOString(),
-									};
-									return { ...prev, phases: [...prev.phases, newPhase] };
-								});
+								updateImplicitPlanToolStatus();
 							}
 						},
 						onToolCallComplete: ({ toolName }) => {
@@ -577,23 +597,7 @@ export function ChatSessionApp({
 									return tc;
 								},
 							);
-							if (implicitPlanCreated) {
-								setActivePlan((prev) => {
-									if (!prev || prev.id !== "implicit-turn-plan") return prev;
-									const updatedPhases = prev.phases.map((p, i) => {
-										const tc = turnToolCallsRef.current[i];
-										if (
-											tc &&
-											tc.status === "completed" &&
-											p.status === "in_progress"
-										) {
-											return { ...p, status: "completed" as const };
-										}
-										return p;
-									});
-									return { ...prev, phases: updatedPhases };
-								});
-							}
+							updateImplicitPlanToolStatus();
 						},
 					},
 				});
