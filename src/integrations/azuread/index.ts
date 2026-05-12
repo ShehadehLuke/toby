@@ -335,6 +335,7 @@ async function chat(options: ChatRunOptions): Promise<void> {
 export const azureAdIntegrationModule: IntegrationModule = {
 	...azureAdLifecycle,
 	capabilities: ["chat"],
+	providerCategories: ["contacts"],
 	authMethods: [
 		{ id: "oauth_pkce", label: "OAuth (PKCE)", isDefault: true },
 		{ id: "client_credentials", label: "Client Credentials" },

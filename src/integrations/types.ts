@@ -18,6 +18,23 @@ export interface IntegrationHealth {
 /** Capabilities an integration may expose for the resource center / CLI. */
 export type IntegrationCapability = "summarize" | "organize" | "chat";
 
+/** Provider categories an integration may belong to (used for default-provider selection). */
+export type ProviderCategory = "email" | "calendar" | "tasks" | "contacts";
+
+export const PROVIDER_CATEGORY_LABELS: Record<ProviderCategory, string> = {
+	email: "Email Provider",
+	calendar: "Calendar Provider",
+	tasks: "Task List Provider",
+	contacts: "Contact List Provider",
+};
+
+export const ALL_PROVIDER_CATEGORIES: readonly ProviderCategory[] = [
+	"email",
+	"calendar",
+	"tasks",
+	"contacts",
+];
+
 /** Single credential field shown in configure UI (flat key namespace). */
 export interface CredentialFieldDescriptor {
 	readonly key: string;
@@ -94,6 +111,8 @@ export interface Integration {
 
 export interface IntegrationModule extends Integration {
 	readonly capabilities: ReadonlyArray<IntegrationCapability>;
+	/** Provider categories this integration belongs to (e.g. "email", "tasks"). */
+	readonly providerCategories?: ReadonlyArray<ProviderCategory>;
 	/** Optional auth methods supported by this integration. */
 	readonly authMethods?: ReadonlyArray<IntegrationAuthMethodDescriptor>;
 	/** Optional high-level resources this integration surfaces (for discovery UI). */

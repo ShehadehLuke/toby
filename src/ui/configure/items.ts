@@ -1,4 +1,12 @@
-import { getIntegrationModules } from "../../integrations/index";
+import {
+	getIntegrationModules,
+	getModulesForCategory,
+} from "../../integrations/index";
+import {
+	ALL_PROVIDER_CATEGORIES,
+	PROVIDER_CATEGORY_LABELS,
+	type ProviderCategory,
+} from "../../integrations/types";
 
 type ItemKind = "section" | "value" | "action" | "select" | "delete";
 
@@ -22,6 +30,7 @@ export function buildSettingsTree(
 	}[],
 	availableProviders: { id: string; displayName: string; models: string[] }[],
 	values: Record<string, string> = {},
+	defaultProviders?: Partial<Record<ProviderCategory, string>>,
 ): SettingsItem {
 	const integrationSections: SettingsItem[] = getIntegrationModules().map(
 		(mod) => {
@@ -121,6 +130,22 @@ export function buildSettingsTree(
 		],
 	}));
 
+	const defaultProviderItems: SettingsItem[] = ALL_PROVIDER_CATEGORIES.map(
+		(cat) => {
+			const modules = getModulesForCategory(cat);
+			const options = ["(none)", ...modules.map((m) => m.name)];
+			const currentValue =
+				defaultProviders?.[cat] ?? values[`defaults.${cat}`] ?? "(none)";
+			return {
+				label: PROVIDER_CATEGORY_LABELS[cat],
+				kind: "select" as const,
+				key: `defaults.${cat}`,
+				options,
+				currentValue,
+			};
+		},
+	);
+
 	return {
 		label: "Toby Configuration",
 		kind: "section",
@@ -131,6 +156,12 @@ export function buildSettingsTree(
 				kind: "section",
 				key: "integrations",
 				children: integrationSections,
+			},
+			{
+				label: "Default Providers",
+				kind: "section",
+				key: "defaults",
+				children: defaultProviderItems,
 			},
 			{
 				label: "AI",

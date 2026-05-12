@@ -270,6 +270,7 @@ function formatChatArgs(args: Record<string, unknown>): string {
 export const gmailIntegrationModule: IntegrationModule = {
 	...gmailLifecycle,
 	capabilities: ["summarize", "organize", "chat"],
+	providerCategories: ["email"],
 	resources: ["inbox", "labels", "messages"],
 	chatReadiness: async (creds) => {
 		const connected = await gmailLifecycle.isConnected();

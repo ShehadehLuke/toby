@@ -238,6 +238,7 @@ async function chat(options: ChatRunOptions): Promise<void> {
 export const todoistIntegrationModule: IntegrationModule = {
 	...todoistLifecycle,
 	capabilities: ["summarize", "chat"],
+	providerCategories: ["tasks"],
 	resources: ["tasks", "projects"],
 	chatReadiness: async (creds) => {
 		if (await todoistLifecycle.isConnected()) return { ok: true };

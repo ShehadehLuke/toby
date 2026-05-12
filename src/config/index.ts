@@ -56,9 +56,12 @@ export interface Persona {
 	ai: AIProvider;
 }
 
+import type { ProviderCategory } from "../integrations/types";
+
 interface TobyConfig {
 	integrations: Record<string, Record<string, unknown>>;
 	personas: Persona[];
+	defaultProviders?: Partial<Record<ProviderCategory, string>>;
 }
 
 export interface GmailCredentials {
@@ -138,6 +141,7 @@ export function readConfig(): TobyConfig {
 	return {
 		integrations: parsed.integrations ?? {},
 		personas,
+		defaultProviders: parsed.defaultProviders,
 	};
 }
 
@@ -259,4 +263,23 @@ export function getAzureAdAuthMethod(
 		getIntegrationCredential(creds, "azuread", "clientSecret") ??
 		creds.azuread?.clientSecret;
 	return clientSecret?.trim() ? "client_credentials" : "oauth_pkce";
+}
+
+export function getDefaultProvider(
+	category: ProviderCategory,
+): string | undefined {
+	const cfg = readConfig();
+	return cfg.defaultProviders?.[category];
+}
+
+export function setDefaultProvider(
+	category: ProviderCategory,
+	integrationName: string,
+): void {
+	const cfg = readConfig();
+	if (!cfg.defaultProviders) {
+		cfg.defaultProviders = {};
+	}
+	cfg.defaultProviders[category] = integrationName;
+	writeConfig(cfg);
 }

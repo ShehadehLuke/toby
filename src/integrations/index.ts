@@ -6,6 +6,7 @@ import type {
 	Integration,
 	IntegrationCapability,
 	IntegrationModule,
+	ProviderCategory,
 } from "./types";
 
 const MODULES: IntegrationModule[] = [
@@ -29,6 +30,12 @@ export function getModulesWithCapability(
 	capability: IntegrationCapability,
 ): IntegrationModule[] {
 	return MODULES.filter((m) => m.capabilities.includes(capability));
+}
+
+export function getModulesForCategory(
+	category: ProviderCategory,
+): IntegrationModule[] {
+	return MODULES.filter((m) => m.providerCategories?.includes(category));
 }
 
 export function getIntegrations(): Integration[] {

@@ -247,6 +247,7 @@ async function chat(options: ChatRunOptions): Promise<void> {
 export const applemailIntegrationModule: IntegrationModule = {
 	...applemailLifecycle,
 	capabilities: ["chat"],
+	providerCategories: ["email"],
 	resources: ["inbox", "drafts", "messages"],
 	chatReadiness: async () => {
 		if (!isAppleMailPlatformSupported()) {

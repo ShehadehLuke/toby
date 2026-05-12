@@ -8,6 +8,10 @@ import {
 	writeCredentials,
 } from "../../config/index";
 import { getIntegrationModules } from "../../integrations/index";
+import {
+	ALL_PROVIDER_CATEGORIES,
+	type ProviderCategory,
+} from "../../integrations/types";
 import type { SettingsItem } from "./items";
 import { buildSettingsTree } from "./items";
 
@@ -53,11 +57,21 @@ export function createConfigureSession(): ConfigureSession {
 		credentialValues[`personas.${p.name}.ai.provider`] = p.ai.provider;
 		credentialValues[`personas.${p.name}.ai.model`] = p.ai.model;
 	}
+	for (const cat of ALL_PROVIDER_CATEGORIES) {
+		const current = config.defaultProviders?.[cat];
+		credentialValues[`defaults.${cat}`] = current ?? "(none)";
+	}
 
 	const refreshTree = (vals: Record<string, string>) => {
 		const freshConfig = readConfig();
 		const personasFromVals = rebuildPersonas(vals, freshConfig.personas);
-		return buildSettingsTree(personasFromVals, AI_PROVIDERS, vals);
+		const defaultProvidersFromVals = rebuildDefaultProviders(vals);
+		return buildSettingsTree(
+			personasFromVals,
+			AI_PROVIDERS,
+			vals,
+			defaultProvidersFromVals,
+		);
 	};
 
 	const callbacks = {
@@ -99,6 +113,7 @@ export function createConfigureSession(): ConfigureSession {
 
 			const cfg = readConfig();
 			cfg.personas = rebuildPersonas(values, cfg.personas);
+			cfg.defaultProviders = rebuildDefaultProviders(values);
 			writeConfig(cfg);
 		},
 		refreshTree,
@@ -142,6 +157,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (typeof value !== "object" || value === null) return false;
 	const proto = Object.getPrototypeOf(value);
 	return proto === Object.prototype || proto === null;
+}
+
+function rebuildDefaultProviders(
+	values: Record<string, string>,
+): Partial<Record<ProviderCategory, string>> {
+	const out: Partial<Record<ProviderCategory, string>> = {};
+	for (const cat of ALL_PROVIDER_CATEGORIES) {
+		const val = values[`defaults.${cat}`];
+		if (val && val !== "(none)") {
+			out[cat] = val;
+		}
+	}
+	return out;
 }
 
 function rebuildPersonas(
