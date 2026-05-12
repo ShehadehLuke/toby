@@ -264,9 +264,6 @@ export function ChatSessionApp({
 	const sessionIdRef = useRef<string | null>(null);
 	const transcriptRef = useRef(transcript);
 	const ongoingPretreatAbortRef = useRef<AbortController | null>(null);
-	const turnToolCallsRef = useRef<
-		{ name: string; status: "in_progress" | "completed" }[]
-	>([]);
 	const snapRef = useRef({
 		askModal: null as AskModal | null,
 		messages: null as CoreMessage[] | null,
@@ -476,57 +473,6 @@ export function ChatSessionApp({
 			const turnAbort = new AbortController();
 			ongoingPretreatAbortRef.current = turnAbort;
 			let activeToolCalls = 0;
-			let implicitPlanCreated = false;
-			turnToolCallsRef.current = [];
-			const buildImplicitPlan = (): Plan => {
-				const now = new Date().toISOString();
-				return {
-					id: "implicit-turn-plan",
-					sessionId: sid,
-					goal: "Answering request",
-					phases: [
-						{
-							id: "implicit-gather-information",
-							label: "Gather information",
-							description: "Run the tools needed to collect request context.",
-							status: activeToolCalls > 0 ? "in_progress" : "completed",
-							order: 0,
-							addedAt: now,
-						},
-						{
-							id: "implicit-answer-request",
-							label: "Answer request",
-							description:
-								"Use the gathered information to complete the prompt.",
-							status: activeToolCalls > 0 ? "pending" : "in_progress",
-							order: 1,
-							addedAt: now,
-						},
-					],
-					status: "in_progress",
-					createdAt: now,
-					updatedAt: now,
-				};
-			};
-			const updateImplicitPlanToolStatus = () => {
-				if (!implicitPlanCreated) return;
-				setActivePlan((prev) => {
-					if (!prev || prev.id !== "implicit-turn-plan") return prev;
-					const nextStatuses =
-						activeToolCalls > 0
-							? (["in_progress", "pending"] as const)
-							: (["completed", "in_progress"] as const);
-					const phases = prev.phases.map((phase, i) => ({
-						...phase,
-						status: nextStatuses[i] ?? phase.status,
-					}));
-					return {
-						...prev,
-						phases,
-						updatedAt: new Date().toISOString(),
-					};
-				});
-			};
 			const turnStartMs = Date.now();
 			const eventLogSink = createChatEventLogSink(sid);
 			const nextLocalSeq = () => {
@@ -585,39 +531,12 @@ export function ChatSessionApp({
 						onToolCallStart: ({ toolName }) => {
 							activeToolCalls += 1;
 							setActivityLine(formatToolStatusLine(toolName));
-							turnToolCallsRef.current = [
-								...turnToolCallsRef.current,
-								{ name: toolName, status: "in_progress" as const },
-							];
-							// If a model turn uses multiple tools without an explicit plan,
-							// show human-readable stages rather than one phase per tool call.
-							if (
-								!implicitPlanCreated &&
-								turnToolCallsRef.current.length >= 2
-							) {
-								implicitPlanCreated = true;
-								const plan = buildImplicitPlan();
-								setActivePlan(plan);
-								activePlanRef.current = plan;
-							} else if (implicitPlanCreated) {
-								updateImplicitPlanToolStatus();
-							}
 						},
-						onToolCallComplete: ({ toolName }) => {
+						onToolCallComplete: () => {
 							activeToolCalls = Math.max(0, activeToolCalls - 1);
 							if (activeToolCalls === 0) {
 								setActivityLine("Thinking…");
 							}
-							// Mark the first in-progress tool with this name as completed
-							turnToolCallsRef.current = turnToolCallsRef.current.map(
-								(tc, i) => {
-									if (tc.name === toolName && tc.status === "in_progress") {
-										return { ...tc, status: "completed" as const };
-									}
-									return tc;
-								},
-							);
-							updateImplicitPlanToolStatus();
 						},
 					},
 				});
@@ -724,13 +643,6 @@ export function ChatSessionApp({
 				throw e;
 			} finally {
 				setLoading(false);
-				// Clear implicit plan after turn completes
-				if (implicitPlanCreated) {
-					setActivePlan((prev) => {
-						if (!prev || prev.id !== "implicit-turn-plan") return prev;
-						return { ...prev, status: "completed" };
-					});
-				}
 			}
 			return { text: responseText, responseMessages };
 		},
