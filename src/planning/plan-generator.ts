@@ -10,12 +10,17 @@ const planPhaseSchema = z.object({
 	label: z
 		.string()
 		.describe(
-			"Short display label for this phase (3-6 words, e.g. 'Fetch unread emails')",
+			"Short human-readable display label for this stage (3-6 words, e.g. 'Fetch today's emails' or 'Summarize today's emails')",
 		),
 	description: z
 		.string()
 		.describe(
-			"Detailed instructions for the model to execute this phase, including what tools to use and what outcome to achieve",
+			"Detailed instructions for executing this stage: what information to collect or process, what outcome to achieve, and any constraints",
+		),
+	toolsRequired: z
+		.array(z.string())
+		.describe(
+			"Tool categories or integration tools likely needed for this stage, such as Gmail search/list tools, Todoist task tools, or none for reasoning-only stages",
 		),
 });
 
@@ -33,9 +38,12 @@ const PLAN_SYSTEM = `You are a planning assistant for Toby, a CLI productivity t
 
 Guidelines:
 - Only produce a plan when the request genuinely requires 2+ sequential steps that depend on each other.
-- Each phase should be independently describable — what the model should do, what tools it might use, and what the expected outcome is.
+- Organize phases around human goals, not individual tool calls. Do not create one phase per API/tool call.
+- Group related data collection tools into a single collection phase, then add a separate processing/action phase when the request requires reasoning over that data.
+- Each phase should be independently describable — what information to gather or transform, what tools are likely needed, and what the expected outcome is.
 - Phases should be ordered by dependency: earlier phases produce outputs that later phases need.
 - Keep labels short (3-6 words) and descriptions practical.
+- For requests like "summarize today's emails", prefer phases like "Fetch today's emails" and "Summarize today's emails", not "Fetch inbox overview", "Fetch email metadata", and "Fetch message content".
 - If the request is simple enough for a single model turn, return null (the caller handles that).`;
 
 /** Whether planning is globally disabled via env. */
@@ -62,6 +70,16 @@ export function shouldGeneratePlan(
 	) {
 		return true;
 	}
+	if (
+		/\b(summarize|summarise|summarie|analy[sz]e|categorize|categorise|organize|organise|prioritize|prioritise|draft|write)\b/i.test(
+			t,
+		) &&
+		/\b(email|emails|mail|message|messages|inbox|task|tasks|todo|todos|ticket|tickets|event|events|calendar)\b/i.test(
+			t,
+		)
+	) {
+		return true;
+	}
 	return false;
 }
 
@@ -79,7 +97,11 @@ function createPlanModel() {
 
 type PlanGenerationResult = {
 	goal: string;
-	phases: readonly { label: string; description: string }[];
+	phases: readonly {
+		label: string;
+		description: string;
+		toolsRequired: readonly string[];
+	}[];
 };
 
 /**
@@ -140,7 +162,11 @@ export async function generatePlan(
 			goal: out.goal,
 			phases: out.phases.map((p) => ({
 				label: p.label,
-				description: p.description,
+				description:
+					p.toolsRequired.length > 0
+						? `${p.description}\nTools required: ${p.toolsRequired.join(", ")}`
+						: p.description,
+				toolsRequired: p.toolsRequired,
 			})),
 		};
 	} catch {

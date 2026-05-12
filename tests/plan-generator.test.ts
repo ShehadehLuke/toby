@@ -36,6 +36,10 @@ describe("shouldGeneratePlan", () => {
 		expect(shouldGeneratePlan(null, "show me my unread emails")).toBe(false);
 	});
 
+	it("returns true for data gathering plus processing requests", () => {
+		expect(shouldGeneratePlan(null, "summarize today's emails")).toBe(true);
+	});
+
 	it("returns false when spec has only 1 mustDo item", () => {
 		expect(
 			shouldGeneratePlan(
