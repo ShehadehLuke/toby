@@ -2,7 +2,12 @@ import crypto from "node:crypto";
 import { createOpenAI } from "@ai-sdk/openai";
 import { Output, generateText, zodSchema } from "ai";
 import { z } from "zod";
-import { readCredentials } from "../config/index";
+import { getDefaultProvider, readCredentials } from "../config/index";
+import {
+	ALL_PROVIDER_CATEGORIES,
+	PROVIDER_CATEGORY_LABELS,
+	type ProviderCategory,
+} from "../integrations/types";
 import {
 	type LocalSkill,
 	computeSkillCatalogSignature,
@@ -16,7 +21,7 @@ import {
 import type { CoreMessage } from "./chat";
 
 const PRETREATMENT_DEFAULT_MODEL = "gpt-4.1-mini";
-const PRETREATMENT_CACHE_SCHEMA_VERSION = "2";
+const PRETREATMENT_CACHE_SCHEMA_VERSION = "3";
 
 const userIntentSpecSchema = z.object({
 	goal: z.string().describe("One sentence: what the user wants to achieve"),
@@ -258,6 +263,20 @@ export function formatUserMessageWithPretreatment(
 	return sections.join("\n");
 }
 
+function buildDefaultProvidersForPretreatment(): string {
+	const lines: string[] = [];
+	for (const cat of ALL_PROVIDER_CATEGORIES) {
+		const name = getDefaultProvider(cat);
+		if (name) {
+			lines.push(`- ${PROVIDER_CATEGORY_LABELS[cat]}: ${name}`);
+		}
+	}
+	if (lines.length === 0) {
+		return "";
+	}
+	return `Default providers (prefer these in relevantIntegrations when the request matches):\n${lines.join("\n")}`;
+}
+
 type PretreatUserPromptParams = {
 	readonly userText: string;
 	readonly integrationLabels: string;
@@ -301,6 +320,7 @@ ${params.skillsCatalogText}`;
 			prompt: `${skillsSection}
 
 Integrations in scope: ${integrationLabels || "(none)"}
+${buildDefaultProvidersForPretreatment()}
 
 User message:
 ${text}`,

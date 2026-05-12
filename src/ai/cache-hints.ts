@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { Persona } from "../config/index";
 import type { ChatWithToolsOptions } from "./chat";
 
-const DEFAULT_CHAT_PROMPT_SCHEMA_VERSION = "1";
+const DEFAULT_CHAT_PROMPT_SCHEMA_VERSION = "2";
 
 function sha256Base64Url(input: string): string {
 	return crypto

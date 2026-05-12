@@ -22,8 +22,17 @@ import {
 	modulesEqual,
 	sortModulesByName,
 } from "../../commands/chat-integrations";
-import { type Persona, readConfig } from "../../config/index";
+import {
+	type Persona,
+	getDefaultProvider,
+	readConfig,
+} from "../../config/index";
 import { getModulesWithCapability } from "../../integrations/index";
+import {
+	ALL_PROVIDER_CATEGORIES,
+	PROVIDER_CATEGORY_LABELS,
+	type ProviderCategory,
+} from "../../integrations/types";
 import type { IntegrationModule } from "../../integrations/types";
 import {
 	createChatEventLogSink,
@@ -125,7 +134,18 @@ function formatScopeLabel(modules: readonly IntegrationModule[]): string {
 	if (modules.length === 0) {
 		return "(none)";
 	}
-	return modules.map((m) => m.displayName).join(" + ");
+	const base = modules.map((m) => m.displayName).join(" + ");
+	const defaultParts: string[] = [];
+	for (const cat of ALL_PROVIDER_CATEGORIES) {
+		const name = getDefaultProvider(cat);
+		if (name && modules.some((m) => m.name === name)) {
+			defaultParts.push(`${PROVIDER_CATEGORY_LABELS[cat]}=${name}`);
+		}
+	}
+	if (defaultParts.length === 0) {
+		return base;
+	}
+	return `${base} [defaults: ${defaultParts.join(", ")}]`;
 }
 
 function toggleNameInList(

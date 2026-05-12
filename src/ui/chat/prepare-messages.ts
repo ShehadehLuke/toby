@@ -5,6 +5,12 @@ import {
 	formatUserMessageWithPretreatment,
 } from "../../ai/pretreatment";
 import type { Persona } from "../../config/index";
+import { getDefaultProvider } from "../../config/index";
+import {
+	ALL_PROVIDER_CATEGORIES,
+	PROVIDER_CATEGORY_LABELS,
+	type ProviderCategory,
+} from "../../integrations/types";
 import type { IntegrationModule } from "../../integrations/types";
 import { composeSystemPromptWithPersona } from "../../personas/prompt";
 import { type LocalSkill, resolveSkillsByNames } from "../../skills/index";
@@ -56,6 +62,23 @@ export function injectSkillBodiesIntoFirstSystemMessage(
 	});
 }
 
+function buildDefaultProvidersSection(): string {
+	const lines: string[] = [];
+	for (const cat of ALL_PROVIDER_CATEGORIES) {
+		const defaultName = getDefaultProvider(cat);
+		if (defaultName) {
+			lines.push(
+				`- ${PROVIDER_CATEGORY_LABELS[cat]}: **${defaultName}** (use its tools by default for ${cat} tasks)`,
+			);
+		}
+	}
+	if (lines.length === 0) {
+		return "";
+	}
+	return `Default providers (prefer these when the user's request matches):
+${lines.join("\n")}`;
+}
+
 function buildCombinedChatBasePrompt(
 	modules: readonly IntegrationModule[],
 ): string {
@@ -64,6 +87,7 @@ function buildCombinedChatBasePrompt(
 		.map((m) => m.chatModelPrep?.systemPromptSection?.trim())
 		.filter((b): b is string => Boolean(b && b.length > 0))
 		.join("\n\n");
+	const defaultsSection = buildDefaultProvidersSection();
 
 	return `You are Toby, a personal assistant with access to: **${labels}**.
 
@@ -73,7 +97,7 @@ Shared rules:
 - Use **askUser** whenever you need a multiple-choice decision from the user. The terminal does not respond to questions written only in plain assistant text.
 - If the request is fully answered, stop without dangling "Would you like…?" in prose unless you call **askUser** with concrete options.
 - When listing emails, tasks, or options in assistant text, prefer markdown list items (\`- item\`) with one item per line.
-
+${defaultsSection ? `\n${defaultsSection}\n` : ""}
 ${integrationBlocks}
 ${globalChatToolsPromptSection()}
 `;
