@@ -75,6 +75,7 @@ export function useMultilineInput(
 	} = options;
 
 	const [cursorIndex, setCursorIndex] = useState(value.length);
+	const cursorIndexRef = useRef(value.length);
 	const previousCursorResetTokenRef = useRef(cursorResetToken);
 
 	// Pending-backslash heuristic: when Kitty protocol is not active, some
@@ -101,18 +102,29 @@ export function useMultilineInput(
 		[kittyConfirmed, baseProfile],
 	);
 
+	const updateCursorIndex = useCallback(
+		(next: number | ((previous: number) => number)) => {
+			setCursorIndex((previous) => {
+				const resolved = typeof next === "function" ? next(previous) : next;
+				cursorIndexRef.current = resolved;
+				return resolved;
+			});
+		},
+		[],
+	);
+
 	useEffect(() => {
 		const forceResetToEnd =
 			previousCursorResetTokenRef.current !== cursorResetToken;
 		previousCursorResetTokenRef.current = cursorResetToken;
-		setCursorIndex((prev) =>
+		updateCursorIndex((prev) =>
 			reconcileCursorIndex({
 				currentCursorIndex: prev,
 				nextInputLength: value.length,
 				forceResetToEnd,
 			}),
 		);
-	}, [cursorResetToken, value.length]);
+	}, [cursorResetToken, value.length, updateCursorIndex]);
 
 	// Clean up the pending-backslash timer on unmount.
 	useEffect(() => {
@@ -124,29 +136,27 @@ export function useMultilineInput(
 	}, []);
 
 	const deleteWordBackward = useCallback(() => {
-		setCursorIndex((ci) => {
-			if (ci <= 0) return ci;
-			let start = ci;
-			while (start > 0 && /\s/.test(value[start - 1] ?? "")) {
-				start--;
-			}
-			while (start > 0 && !/\s/.test(value[start - 1] ?? "")) {
-				start--;
-			}
-			onChange(value.slice(0, start) + value.slice(ci));
-			return start;
-		});
-	}, [value, onChange]);
+		const ci = cursorIndexRef.current;
+		if (ci <= 0) return;
+		let start = ci;
+		while (start > 0 && /\s/.test(value[start - 1] ?? "")) {
+			start--;
+		}
+		while (start > 0 && !/\s/.test(value[start - 1] ?? "")) {
+			start--;
+		}
+		onChange(value.slice(0, start) + value.slice(ci));
+		updateCursorIndex(start);
+	}, [value, onChange, updateCursorIndex]);
 
 	const insertAtCursor = useCallback(
 		(text: string) => {
-			setCursorIndex((ci) => {
-				const next = value.slice(0, ci) + text + value.slice(ci);
-				onChange(next);
-				return ci + text.length;
-			});
+			const ci = cursorIndexRef.current;
+			const next = value.slice(0, ci) + text + value.slice(ci);
+			onChange(next);
+			updateCursorIndex(ci + text.length);
 		},
-		[value, onChange],
+		[value, onChange, updateCursorIndex],
 	);
 
 	// Debug logging for input events — set DEBUG_INPUT to a file path to enable.
@@ -280,7 +290,7 @@ export function useMultilineInput(
 			}
 
 			if (key.upArrow) {
-				setCursorIndex((ci) => {
+				updateCursorIndex((ci) => {
 					const lines = value.split("\n");
 					let currentLineIndex = 0;
 					let currentPos = 0;
@@ -312,7 +322,7 @@ export function useMultilineInput(
 			}
 
 			if (key.downArrow) {
-				setCursorIndex((ci) => {
+				updateCursorIndex((ci) => {
 					const lines = value.split("\n");
 					let currentLineIndex = 0;
 					let currentPos = 0;
@@ -344,11 +354,11 @@ export function useMultilineInput(
 			}
 
 			if (key.leftArrow) {
-				setCursorIndex((ci) => Math.max(0, ci - 1));
+				updateCursorIndex((ci) => Math.max(0, ci - 1));
 				return;
 			}
 			if (key.rightArrow) {
-				setCursorIndex((ci) => Math.min(value.length, ci + 1));
+				updateCursorIndex((ci) => Math.min(value.length, ci + 1));
 				return;
 			}
 
@@ -364,13 +374,11 @@ export function useMultilineInput(
 				return;
 			}
 			if (deleteAction === "delete-char") {
-				setCursorIndex((ci) => {
-					if (ci > 0) {
-						onChange(value.slice(0, ci - 1) + value.slice(ci));
-						return ci - 1;
-					}
-					return ci;
-				});
+				const ci = cursorIndexRef.current;
+				if (ci > 0) {
+					onChange(value.slice(0, ci - 1) + value.slice(ci));
+					updateCursorIndex(ci - 1);
+				}
 				return;
 			}
 
