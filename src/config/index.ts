@@ -29,6 +29,10 @@ export function getChatDbPath(): string {
 	return path.join(resolveTobyDir(), "chat.sqlite");
 }
 
+export function getMemoryDbPath(): string {
+	return path.join(resolveTobyDir(), "memory.sqlite");
+}
+
 export function getLogPath(): string {
 	return path.join(resolveTobyDir(), "toby.log");
 }

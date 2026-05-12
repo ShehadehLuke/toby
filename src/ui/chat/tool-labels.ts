@@ -32,6 +32,12 @@ const TOOL_LABEL_OVERRIDES: Record<string, string> = {
 	archiveMailMessage: "Archive Mail message",
 	flagMailMessage: "Flag Mail message",
 	moveMailMessage: "Move Mail message",
+	memorySearch: "Search memory",
+	memoryPropose: "Propose memory",
+	memorySave: "Save memory",
+	memoryForget: "Forget memory",
+	memoryExplain: "Explain memory",
+	memoryRetrieveForTask: "Retrieve memories for task",
 };
 
 function humanizeToolName(toolName: string): string {

@@ -201,6 +201,122 @@ function registerBuiltInToolFeedbackFormatters(): void {
 		}
 		return defaultToolFeedbackOutput(ctx);
 	});
+
+	// Memory tools
+	registerToolFeedbackFormatter("memorySearch", (ctx) => {
+		const r = ctx.result as {
+			count?: number;
+			memories?: unknown[];
+			dryRun?: boolean;
+			message?: string;
+		} | null;
+		if (r?.dryRun && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (typeof r?.count === "number") {
+			return r.count === 0
+				? "No memories found."
+				: `Found ${r.count} memory(ies).`;
+		}
+		return defaultToolFeedbackOutput(ctx);
+	});
+
+	registerToolFeedbackFormatter("memoryPropose", (ctx) => {
+		const r = ctx.result as {
+			status?: string;
+			proposalId?: string;
+			sensitivity?: string;
+			message?: string;
+			dryRun?: boolean;
+		} | null;
+		if (r?.dryRun && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (r?.status === "accepted" && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (r?.status === "pending") {
+			return `Memory proposed (sensitivity: ${r.sensitivity ?? "unknown"}), awaiting confirmation.`;
+		}
+		return defaultToolFeedbackOutput(ctx);
+	});
+
+	registerToolFeedbackFormatter("memorySave", (ctx) => {
+		const r = ctx.result as {
+			ok?: boolean;
+			memoryId?: string;
+			message?: string;
+			error?: string;
+			dryRun?: boolean;
+		} | null;
+		if (r?.dryRun && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (r?.ok === true && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (r?.ok === false && typeof r.error === "string") {
+			return sanitizeOneLine(`Save failed: ${r.error}`);
+		}
+		return defaultToolFeedbackOutput(ctx);
+	});
+
+	registerToolFeedbackFormatter("memoryForget", (ctx) => {
+		const r = ctx.result as {
+			ok?: boolean;
+			message?: string;
+			error?: string;
+			dryRun?: boolean;
+		} | null;
+		if (r?.dryRun && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (r?.ok === true) {
+			return "Forgot memory.";
+		}
+		if (r?.ok === false && typeof r.error === "string") {
+			return sanitizeOneLine(`Forget failed: ${r.error}`);
+		}
+		return defaultToolFeedbackOutput(ctx);
+	});
+
+	registerToolFeedbackFormatter("memoryExplain", (ctx) => {
+		const r = ctx.result as {
+			item?: { type?: string; subject?: string; value?: string };
+			error?: string;
+		} | null;
+		if (typeof r?.error === "string") {
+			return sanitizeOneLine(r.error);
+		}
+		if (r?.item) {
+			const type = r.item.type ?? "unknown";
+			const preview = r.item.subject ?? r.item.value?.slice(0, 60) ?? "";
+			return `Explained memory (${type}): ${sanitizeOneLine(preview, 120)}`;
+		}
+		return defaultToolFeedbackOutput(ctx);
+	});
+
+	registerToolFeedbackFormatter("memoryRetrieveForTask", (ctx) => {
+		const r = ctx.result as {
+			summary?: string;
+			memories?: unknown[];
+			omitted?: { count?: number };
+			dryRun?: boolean;
+			message?: string;
+		} | null;
+		if (r?.dryRun && typeof r.message === "string") {
+			return sanitizeOneLine(r.message);
+		}
+		if (Array.isArray(r?.memories)) {
+			const n = r.memories.length;
+			const omitted = r.omitted?.count ?? 0;
+			const suffix = omitted > 0 ? ` (${omitted} omitted)` : "";
+			return n === 0
+				? `No relevant memories.${suffix}`
+				: `Retrieved ${n} memory(ies)${suffix}.`;
+		}
+		return defaultToolFeedbackOutput(ctx);
+	});
 }
 
 registerBuiltInToolFeedbackFormatters();

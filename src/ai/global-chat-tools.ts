@@ -51,6 +51,19 @@ export function globalChatToolsPromptSection(): string {
 	return `
 Global Toby tools (always available in addition to integration tools):
 - **createLocalSkill**: Draft a SKILL.md from your written description and save it under ~/.toby/skills/<folder>/SKILL.md. Required: \`description\`. Optional: \`preferredFolderName\` (kebab-case). If the folder name is omitted, the drafting step recommends one; if that folder already exists and no preferred name was given, a numeric suffix is used. If the user supplied \`preferredFolderName\` and SKILL.md already exists there, the tool fails so nothing is overwritten.
+- **memorySearch**: Search the user's stored personal memories (preferences, relationships, projects, facts, etc.).
+- **memoryPropose**: Propose saving a new memory. High-confidence normal preferences are auto-saved; sensitive or low-confidence items stay pending until confirmed with **memorySave**.
+- **memorySave**: Confirm a pending memory proposal.
+- **memoryForget**: Delete a stored memory.
+- **memoryExplain**: Show why a memory exists (source and audit trail).
+- **memoryRetrieveForTask**: Retrieve memories relevant to the current task.
+
+Memory rules:
+- **Always** use **memoryPropose** when the user shares a durable preference, fact, or personal context worth remembering. Never skip this.
+- Use **memoryRetrieveForTask** at the start of a turn to recall relevant context before acting.
+- Use **memorySearch** when you need to look up something specific the user previously mentioned.
+- Use **memoryForget** when the user asks to remove a memory.
+- Use **memoryExplain** when the user asks why you know something.
 `;
 }
 

@@ -9,6 +9,7 @@ import type { Persona } from "../config/index";
 import { getIntegrationModule } from "../integrations/index";
 import type { IntegrationModule } from "../integrations/types";
 import { log } from "../logging/chat-log";
+import { createMemoryTools } from "../memory/tools";
 
 type ChatTurnOptions = {
 	readonly persona: Persona;
@@ -93,6 +94,16 @@ export async function runSharedChatTurn(
 		}),
 	);
 	appliedActions.push(...globalAppliedSink);
+	const memoryAppliedSink: string[] = [];
+	Object.assign(
+		mergedTools,
+		createMemoryTools({
+			userId: "default",
+			dryRun: options.dryRun,
+			appliedActions: memoryAppliedSink,
+		}),
+	);
+	appliedActions.push(...memoryAppliedSink);
 	const moduleNames = modules.map((m) => m.name);
 
 	const tools = withAskUserTool(mergedTools, options.askUser);
