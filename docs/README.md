@@ -11,6 +11,7 @@ Human- and agent-oriented docs for this repository.
 | [create-integration.md](create-integration.md) | Checklist for adding a new integration. |
 | [chat-pipeline.md](chat-pipeline.md) | `toby chat` turn flow plus prompt and tool caching behavior. |
 | [slash-commands.md](slash-commands.md) | `toby chat` slash-command registry and how to add new commands. |
+| [terminal-input.md](terminal-input.md) | How terminal key events are parsed, encoded, and dispatched — guide for adding new shortcuts. |
 | [build-executable.md](build-executable.md) | Bun `bun build --compile` standalone binary, patches, and tag-triggered GitHub Releases. |
 
 Start from the repo root **[`AGENTS.md`](../AGENTS.md)** for a short guide and links here.
