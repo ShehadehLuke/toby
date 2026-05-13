@@ -9,7 +9,7 @@ This page documents the shared Toby CLI commands and the primary usage patterns.
 Open the interactive configure UI:
 
 - **Integrations** — per-module credentials from `IntegrationModule.getCredentialDescriptors()`.
-- **AI** — **OpenAI** (API token in `credentials.json`) and **Hugging Face** (use **Add Model** to append model ids to `config.json` → `huggingFaceModels`; pick `huggingface` and a model id under each **Persona**).
+- **AI** — **OpenAI** (API token in `credentials.json`). **Self Hosted Models** (ONNX / Transformers.js catalog in `huggingFaceSelfHostedModels`) and **Inference Models** (router catalog in `huggingFaceInferenceModels`); **Hugging Face** access token for inference lives under **AI → Hugging Face**. Under each **Persona**, pick provider `openai`, `huggingface-self-hosted`, or `huggingface-inference` and a matching **AI model** id.
 - **Personas** — name, instructions, prompt mode, and per-persona **AI provider** / **AI model**.
 
 ### `toby config backup [destination]`

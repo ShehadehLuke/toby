@@ -14,7 +14,7 @@ src/
     gmail/
     todoist/
   config/                # Read/write ~/.toby/config.json and credentials.json
-  downloadedmodels/      # Helpers for Hugging Face model ids stored in config (see below)
+  huggingface/           # HF cache path (`envconfig`), model id helpers, Windows download retry
   ai/                    # Shared AI helpers (chat, providers) — not integration-specific
   chat-pipeline/         # Shared turn runner, tool cache, chat event types
   personas/              # Named personas (model + instructions) used by AI flows
@@ -41,8 +41,8 @@ src/
 
 | Location | Role |
 | -------- | ---- |
-| `~/.toby/config.json` | Integration connection flags, personas, Hugging Face model catalog (`huggingFaceModels`) |
-| `~/.toby/credentials.json` | API keys, OAuth client secrets, OpenAI API token (`ai.openai.token`) |
+| `~/.toby/config.json` | Integration connection flags, personas, self-hosted ONNX model ids (`huggingFaceSelfHostedModels`), inference model ids (`huggingFaceInferenceModels`) |
+| `~/.toby/credentials.json` | API keys, OAuth client secrets, OpenAI token (`ai.openai.token`), optional Hugging Face Inference token (`ai.huggingface.accessToken`) |
 | `~/.toby/chat.sqlite` | Chat session storage (sessions, messages, transcript) |
 
 Access is centralized in [`src/config/index.ts`](../src/config/index.ts). Integration modules should not hardcode paths; use the config helpers.
@@ -62,11 +62,18 @@ registry powers autocomplete, execution, and help text (see
 
 Shared pieces live under `src/ai/`:
 
-- [`chat.ts`](../src/ai/chat.ts) (under `src/ai/`) — model creation (`createModelForPersona`) and tool-assisted chat (`chatWithTools`) used by Gmail organize, `toby chat`, and similar flows. Supports **OpenAI** (AI SDK `createOpenAI` + persona model id) and **Hugging Face** via [`@browser-ai/transformers-js`](https://www.npmjs.com/package/@browser-ai/transformers-js) (`transformersJS(modelId)`) when a persona uses `provider: "huggingface"`.
+- [`chat.ts`](../src/ai/chat.ts) — model creation (`createModelForPersona`) and tool-assisted chat (`chatWithTools`) used by Gmail organize, `toby chat`, and similar flows. Personas can use **`openai`**, **`huggingface-self-hosted`** ([`@browser-ai/transformers-js`](https://www.npmjs.com/package/@browser-ai/transformers-js) `transformersJS` in a dedicated [`worker.ts`](../src/ai/worker.ts)), or **`huggingface-inference`** (AI SDK `createOpenAI` against the Hugging Face OpenAI-compatible router + persona `ai.model`).
 - [`ask-user-tool.ts`](../src/ai/ask-user-tool.ts) — shared **Ask User** tool merged into tool maps; optional handler for Ink (`toby chat` session) vs readline (`organize`, `--no-tui` chat).
 - [`ui/chat/session.tsx`](../src/ui/chat/session.tsx) — multi-turn Ink chat: keeps provider message history and wires `askUser` into the TUI.
-- [`providers.ts`](../src/ai/providers.ts) — `getAIProviders()` returns OpenAI + Hugging Face entries with **model id lists** for the configure UI (OpenAI list is fixed; Hugging Face list comes from config).
+- [`providers.ts`](../src/ai/providers.ts) — `getAIProviders()` returns **OpenAI**, **Hugging Face Self Hosted**, and **Hugging Face Inference** entries with model id lists for the configure UI (OpenAI list is fixed; self-hosted list from `huggingFaceSelfHostedModels`; inference list from `huggingFaceInferenceModels`).
+- [`worker.ts`](../src/ai/worker.ts) — `TransformersJSWorkerHandler` entry for the self-hosted path so heavy inference runs off the main thread.
 
-**Hugging Face is not an `IntegrationModule`.** It is first-party AI configuration: persona `ai.provider` / `ai.model`, optional **downloaded model ids** in `config.json`, and helpers in [`src/downloadedmodels/index.ts`](../src/downloadedmodels/index.ts) (`getDownloadedModels`, `addDownloadedModel`, etc.). The configure tree (`src/ui/configure/items.ts`) exposes **AI → Hugging Face → Add Model** so new ids are appended to `huggingFaceModels` and appear in persona **AI Model** when provider is `huggingface`.
+Hugging Face–specific helpers live under [`src/huggingface/`](../src/huggingface/):
+
+- [`downloadedmodels/index.ts`](../src/huggingface/downloadedmodels/index.ts) — read/write **`huggingFaceSelfHostedModels`** and **`huggingFaceInferenceModels`** in config (`getDownloadedModels`, `addDownloadedModel`, `addInferenceModel`, etc.).
+- [`envconfig.ts`](../src/huggingface/envconfig.ts) — `setHuggingFaceCacheDir()` sets Transformers.js `env.cacheDir` (called from [`src/cli.ts`](../src/cli.ts) at startup).
+- [`retry.ts`](../src/huggingface/retry.ts) — bounded retry around model session init when Windows returns transient `EPERM` / `EACCES` / `EBUSY` on `rename` during ONNX cache writes.
+
+**Hugging Face is not an `IntegrationModule`.** It is first-party AI configuration: each persona sets `ai.provider` and `ai.model`. The configure tree ([`src/ui/configure/items.ts`](../src/ui/configure/items.ts)) exposes **AI → Self Hosted Models** and **AI → Inference Models** (plus Hugging Face access token under **AI → Hugging Face**) so catalogued ids appear when the persona provider is **`huggingface-self-hosted`** or **`huggingface-inference`** respectively.
 
 Integration-specific **prompts** and **tool definitions** should live next to the integration (e.g. `src/integrations/gmail/prompts/`, `tools.ts`) so the core stays integration-agnostic.

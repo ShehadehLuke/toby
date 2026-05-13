@@ -68,12 +68,12 @@ Each integration typically owns:
 - **`organize <integration>`** — `getIntegrationModule`, require `organize` in `capabilities` and a defined `organize` function. Pass `--dry-run` to preview changes. Pass `--watch "<interval>"` to run immediately and then repeat periodically (e.g. `--watch "every hour"` or `--watch "30m"`); stop with Ctrl+C.
 - **`chat [words...]`** — Optional first word may be a chat integration name (`gmail`, `todoist`, `azuread`); remaining words are the prompt. If the first word is not an integration, the whole line is treated as the prompt and **all connected** chat integrations are used together (merged tools + combined system prompt). Repeat **`--integration <name>`** to choose an explicit set; when that flag is used, positional words are **only** the prompt. By default an **Ink** session keeps the full `CoreMessage[]` history; `askUser` is routed through the TUI. If there is no initial prompt, type the first message in the TUI. Pass **`--no-tui`** for a single console turn (one integration still uses `module.chat`; multiple integrations use one combined tool-calling turn, readline `askUser` only). In the TUI, **`/integration`** opens a multi-select picker (Space toggles, Enter applies).
 - **Chat tool feedback (Ink TUI)** — After each tool runs, a compact result line is shown in the transcript. Per-tool copy is customizable via `registerToolFeedbackFormatter` in [`src/ui/chat/tool-feedback-registry.ts`](../src/ui/chat/tool-feedback-registry.ts) (call from a side-effect import or bootstrap code; avoid import cycles with `tools.ts`).
-- **`config`** — builds credential UI from `getCredentialDescriptors` across `getIntegrationModules()`, saves via each `mergeCredentialsPatch`.
+- **`configure`** — builds credential UI from `getCredentialDescriptors` across `getIntegrationModules()`, saves via each `mergeCredentialsPatch`.
   - When `authMethods` are provided, configure shows an auth-method selector and only method-relevant credential fields.
 
 Keeping this wiring generic avoids adding new `if (name === "…")` branches in core commands when a new integration is added.
 
-## AI providers (OpenAI vs Hugging Face) — not integrations
+## AI providers (OpenAI and Hugging Face) — not integrations
 
 **Email/calendar/task integrations** (`gmail`, `todoist`, `azuread`, `applemail`, …) implement `IntegrationModule` and appear under **Integrations** in `toby config`.
 
@@ -82,6 +82,7 @@ Keeping this wiring generic avoids adding new `if (name === "…")` branches in 
 | Persona `ai.provider` | Configure / storage | Main-turn model |
 | --------------------- | ------------------- | ---------------- |
 | `openai` | **AI → OpenAI → API Token** writes `credentials.json` → `ai.openai.token` | OpenAI models listed in [`src/ai/providers.ts`](../src/ai/providers.ts) |
-| `huggingface` | **AI → Hugging Face → Add Model** appends Hugging Face model ids to `config.json` → `huggingFaceModels` (see [`src/downloadedmodels/index.ts`](../src/downloadedmodels/index.ts)) | [`createModelForPersona`](../src/ai/chat.ts) uses `@browser-ai/transformers-js` |
+| `huggingface-self-hosted` | **AI → Self Hosted Models** appends ONNX model repo ids to `config.json` → `huggingFaceSelfHostedModels` (see [`src/huggingface/downloadedmodels/index.ts`](../src/huggingface/downloadedmodels/index.ts)) | [`createModelForPersona`](../src/ai/chat.ts) uses [`@browser-ai/transformers-js`](https://www.npmjs.com/package/@browser-ai/transformers-js) + [`src/ai/worker.ts`](../src/ai/worker.ts) |
+| `huggingface-inference` | **AI → Inference Models** appends model ids to `huggingFaceInferenceModels`; **AI → Hugging Face** sets `credentials.json` → `ai.huggingface.accessToken` | [`createModelForPersona`](../src/ai/chat.ts) uses the Hugging Face OpenAI-compatible inference router (`createOpenAI` + `baseURL` `https://router.huggingface.co/v1`) |
 
-Pretreatment and other small “preflight” calls may still use OpenAI even when the main persona uses Hugging Face; see [`docs/chat-pipeline.md`](chat-pipeline.md).
+Pretreatment and other small “preflight” calls may still use OpenAI or Hugging Face Inference depending on `TOBY_PRETREAT_MODEL`; see [`docs/chat-pipeline.md`](chat-pipeline.md).

@@ -22,6 +22,7 @@ import {
 } from "../chat-pipeline/tool-result-cache";
 import { readCredentials } from "../config/index";
 import type { Persona } from "../config/index";
+import { withWindowsRenameRetry } from "../huggingface/retry";
 
 export type CoreMessage = ModelMessage;
 
@@ -247,6 +248,7 @@ export function createModelForPersona(persona: Persona) {
 			worker: new Worker(new URL("./worker.ts", import.meta.url), {
 				type: "module",
 			}),
+			dtype: "q8",
 		});
 		return huggingface;
 	}
@@ -270,7 +272,7 @@ export function createModelForPersona(persona: Persona) {
 	}
 
 	throw new Error(
-		`Unsupported AI provider: ${persona.ai.provider}. Only "openai" and "huggingface" is supported.`,
+		`Unsupported AI provider: ${persona.ai.provider}. Only "openai", "huggingface-inference", and "huggingface-self-hosted" are supported.`,
 	);
 }
 
@@ -342,16 +344,31 @@ export async function chatWithTools(
 			}
 			if (availability === "downloadable") {
 				const modelDownloadId = randomUUID();
-				await model.createSessionWithProgress((progress: number) => {
-					if (onChatEvent) {
-						onChatEvent({
-							type: "model_download_start",
-							id: modelDownloadId,
-							seq: nextSeq(),
-							header: `Downloading model... ${Math.round(progress * 100)}%`,
-						});
-					}
-				});
+				await withWindowsRenameRetry(
+					() =>
+						model.createSessionWithProgress((progress: number) => {
+							if (onChatEvent) {
+								onChatEvent({
+									type: "model_download_start",
+									id: modelDownloadId,
+									seq: nextSeq(),
+									header: `Downloading model... ${Math.round(progress * 100)}%`,
+								});
+							}
+						}),
+					{
+						onRetry: (attempt) => {
+							if (onChatEvent) {
+								onChatEvent({
+									type: "model_download_start",
+									id: modelDownloadId,
+									seq: nextSeq(),
+									header: `Retrying model load (attempt ${attempt + 1}) after Windows file lock…`,
+								});
+							}
+						},
+					},
+				);
 			}
 		}
 		const modelRequestId = randomUUID();

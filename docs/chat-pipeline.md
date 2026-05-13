@@ -27,14 +27,15 @@ Key files:
 - `src/chat-pipeline/run-turn.ts`: shared integration turn runner (`runIntegrationChatTurn`, `runSharedChatTurn`). `src/ui/chat/run-turn.ts` re-exports from this module.
 - `src/ai/chat.ts`: shared wrapper around AI SDK `streamText` / `generateText`, tool cache injection, lifecycle hooks, and abort signal propagation.
 
-## Persona model providers (OpenAI vs Hugging Face)
+## Persona model providers (OpenAI and Hugging Face)
 
 The **main** chat turn (`runIntegrationChatTurn` → `chatWithTools`) uses whatever model `createModelForPersona(persona)` returns:
 
 - **`openai`** — requires `ai.openai.token` in `~/.toby/credentials.json`; model id is the OpenAI model name on the persona.
-- **`huggingface`** — uses `@browser-ai/transformers-js` with the persona’s `ai.model` string (typically a Hugging Face model id). Available ids for the configure UI come from `config.json` **`huggingFaceModels`**, maintained via **AI → Hugging Face → Add Model** and [`src/downloadedmodels/index.ts`](../src/downloadedmodels/index.ts).
+- **`huggingface-self-hosted`** — uses [`@browser-ai/transformers-js`](https://www.npmjs.com/package/@browser-ai/transformers-js) with the persona’s `ai.model` string (typically an ONNX community repo id such as `onnx-community/...`). Configure UI ids come from `config.json` **`huggingFaceSelfHostedModels`**, maintained via **AI → Self Hosted Models** and [`src/huggingface/downloadedmodels/index.ts`](../src/huggingface/downloadedmodels/index.ts). Inference runs in a dedicated worker ([`src/ai/worker.ts`](../src/ai/worker.ts)).
+- **`huggingface-inference`** — uses the Hugging Face OpenAI-compatible router with `ai.huggingface.accessToken` in `credentials.json` and the persona’s `ai.model`. Catalog ids for the UI come from **`huggingFaceInferenceModels`** (see **AI → Inference Models** and [`src/huggingface/downloadedmodels/index.ts`](../src/huggingface/downloadedmodels/index.ts)).
 
-Pretreatment (see below) is a **separate** small OpenAI call and still expects an OpenAI API key when enabled; it does not use the Hugging Face persona path.
+Pretreatment (see below) is a **separate** small model call; it can target OpenAI or Hugging Face Inference depending on `TOBY_PRETREAT_MODEL` (see [`src/ai/pretreatment.ts`](../src/ai/pretreatment.ts)). It does not use the self-hosted Transformers.js persona path.
 
 ## Message construction (stable prefix vs dynamic content)
 
@@ -57,7 +58,7 @@ Where this is implemented:
 Before the main model turn, `ChatSessionApp` may run a **small, fast** OpenAI call that extracts a structured intent spec (goal, must/must-not, assumptions, open questions, likely integrations, **relevant local skills**) and **prepends** it to the `role: "user"` content sent to the main model. The Ink transcript still shows the **verbatim** user line.
 
 - **When**: first user prompt in a session always; later prompts only when `[shouldPretreat](../src/ai/pretreatment.ts)` flags the text as ambiguous (short follow-ups, pronouns without a recent assistant reply, multi-clause requests, etc.).
-- **Model**: defaults to `**gpt-4.1-mini`**. Override with `TOBY_PRETREAT_MODEL`. Disable entirely with `TOBY_DISABLE_PRETREATMENT=1`.
+- **Model**: override with `TOBY_PRETREAT_MODEL`. Values must start with `openai/` (uses `ai.openai.token`) or `huggingface/` (uses `ai.huggingface.accessToken`); see [`createPretreatmentModel`](../src/ai/pretreatment.ts). If unset, behavior follows the default constant in that file. Disable entirely with `TOBY_DISABLE_PRETREATMENT=1`.
 - **Debug**: `TOBY_DEBUG_PREP=1` adjusts the **prompt preparation** transcript box detail when a spec was attached (no separate `meta` line).
 - **Caching**:
   - Pretreatment uses its own short system prompt and is **not** included in the main `promptCacheKey` merge. The wrapped user text remains dynamic user-role content, so the stable-prefix caching strategy for the main turn is unchanged.
