@@ -58,6 +58,8 @@ Each integration typically owns:
 
 **Apple Mail** ([`src/integrations/applemail/`](../src/integrations/applemail/)) is **macOS-only**: it controls the local Mail.app via AppleScript for chat tools (`searchEmails`, `createDraft`, `updateDraft`). See [`apple-mail.md`](apple-mail.md) for setup, permissions, and limitations.
 
+**Apple Calendar** ([`src/integrations/applecalendar/`](../src/integrations/applecalendar/)) is **macOS-only**: it uses **EventKit** (AppleScriptObjC) for fast event search across all calendar types (including Exchange/iCloud), and Calendar.app AppleScript for create/update/delete operations. See [`apple-calendar.md`](apple-calendar.md) for setup, permissions, and AppleScript pitfalls.
+
 ## How core commands use modules
 
 - **`connect` / `disconnect`** — `getIntegration(name)` then lifecycle methods.
