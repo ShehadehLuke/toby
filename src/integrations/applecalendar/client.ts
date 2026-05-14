@@ -268,11 +268,16 @@ export function searchCalendarEventsSync(
 	// Exchange/iCloud calendars, and iterating all events times out on
 	// large calendars. EventKit's predicateForEventsWithStartDate:endDate:calendars:
 	// queries the local EventKit database directly and is ~100x faster.
+	//
+	// When dateTo is a date-only string (e.g. "2026-05-14"), we advance it to
+	// the start of the next day so that timed events on that day are included.
+	// Without this, date-only dateTo becomes midnight of the same day, creating
+	// a zero-length window that only matches all-day events.
 	const dateFromISO = params.dateFrom?.trim()
 		? isoToUTCString(params.dateFrom.trim())
 		: null;
 	const dateToISO = params.dateTo?.trim()
-		? isoToUTCString(params.dateTo.trim())
+		? isoToUTCString(params.dateTo.trim(), { endOfRange: true })
 		: null;
 	const queryFilter = params.query?.trim()
 		? escapeForAppleScript(params.query.trim())
@@ -365,15 +370,44 @@ return outputText
 /**
  * Convert a date string (ISO 8601, natural language, etc.) to a UTC ISO string
  * suitable for NSDate's dateWithString: format ("yyyy-MM-dd HH:mm:ss +0000").
+ *
+ * When `endOfRange` is true and the input is a date-only string (no time component),
+ * the result is advanced to the start of the next UTC day so that timed events on
+ * the specified date fall within the search range. Without this, a date-only
+ * `dateTo` becomes midnight of the same day, excluding all timed events.
  */
-function isoToUTCString(input: string): string {
+function isoToUTCString(
+	input: string,
+	opts?: { endOfRange?: boolean },
+): string {
 	// Try parsing as a date
 	const d = new Date(input);
 	if (!Number.isNaN(d.getTime())) {
+		if (opts?.endOfRange && isDateOnlyInput(input)) {
+			// Advance to start of next UTC day to include timed events on the target date
+			d.setUTCDate(d.getUTCDate() + 1);
+			d.setUTCHours(0, 0, 0, 0);
+		}
 		return formatAsUTCISO(d);
 	}
 	// Fallback: return as-is and hope NSDate can parse it
 	return input;
+}
+
+/**
+ * Returns true if the input string appears to be a date-only value with no time
+ * component (e.g. "2026-05-14", "05/14/2026", "May 14, 2026").
+ * ISO datetime strings like "2026-05-14T09:00:00" return false.
+ */
+function isDateOnlyInput(input: string): boolean {
+	const trimmed = input.trim();
+	// ISO date-only: YYYY-MM-DD with no "T" or time suffix
+	if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+	// Slash date-only: M/D/YYYY or MM/DD/YYYY
+	if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) return true;
+	// Natural language date-only: "May 14, 2026" (no AM/PM or HH:MM time)
+	if (/^[a-zA-Z]+ \d{1,2},? \d{4}$/.test(trimmed)) return true;
+	return false;
 }
 
 function formatAsUTCISO(d: Date): string {
