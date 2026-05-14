@@ -179,12 +179,20 @@ export interface AppleCalendarEventDetail extends AppleCalendarEventSummary {
 
 function parseEventBlock(
 	line: string,
-	calendarName: string,
+	defaultCalendarName: string,
 ): AppleCalendarEventSummary | null {
 	const parts = line.split(EVENT_COL_SEP);
 	if (parts.length < 7) return null;
-	const [uid, summary, startStr, endStr, allDayStr, location, description] =
-		parts;
+	const [
+		uid,
+		summary,
+		startStr,
+		endStr,
+		allDayStr,
+		location,
+		description,
+		calName,
+	] = parts;
 	return {
 		uid: uid ?? "",
 		summary: summary ?? "",
@@ -193,19 +201,19 @@ function parseEventBlock(
 		isAllDay: allDayStr === "true",
 		location: location ?? "",
 		description: description ?? "",
-		calendar: calendarName,
+		calendar: calName?.trim() || defaultCalendarName,
 	};
 }
 
 export function parseEventListOutput(
 	raw: string,
-	calendarName: string,
+	defaultCalendarName: string,
 ): AppleCalendarEventSummary[] {
 	const trimmed = raw.trim();
 	if (!trimmed) return [];
 	return trimmed
 		.split(EVENT_ROW_SEP)
-		.map((chunk) => parseEventBlock(chunk, calendarName))
+		.map((chunk) => parseEventBlock(chunk, defaultCalendarName))
 		.filter((e): e is AppleCalendarEventSummary => e !== null);
 }
 
@@ -254,77 +262,128 @@ export function searchCalendarEventsSync(
 	}
 
 	const limit = Math.min(Math.max(1, params.limit ?? 30), 200);
-	const whoseParts: string[] = [];
 
-	if (params.query?.trim()) {
-		const q = escapeForAppleScript(params.query.trim());
-		whoseParts.push(`summary contains "${q}"`);
-	}
-	if (params.dateFrom?.trim()) {
-		const df = normalizeToAppleScriptDate(params.dateFrom.trim());
-		whoseParts.push(`start date >= (date "${escapeForAppleScript(df)}")`);
-	}
-	if (params.dateTo?.trim()) {
-		const dt = normalizeToAppleScriptDate(params.dateTo.trim());
-		whoseParts.push(`start date <= (date "${escapeForAppleScript(dt)}")`);
-	}
-
-	const whoseClause =
-		whoseParts.length > 0 ? ` whose ${whoseParts.join(" and ")}` : "";
+	// Use AppleScriptObjC / EventKit for fast date-range queries.
+	// Calendar.app's AppleScript `whose` clause is silently ignored for
+	// Exchange/iCloud calendars, and iterating all events times out on
+	// large calendars. EventKit's predicateForEventsWithStartDate:endDate:calendars:
+	// queries the local EventKit database directly and is ~100x faster.
+	const dateFromISO = params.dateFrom?.trim()
+		? isoToUTCString(params.dateFrom.trim())
+		: null;
+	const dateToISO = params.dateTo?.trim()
+		? isoToUTCString(params.dateTo.trim())
+		: null;
+	const queryFilter = params.query?.trim()
+		? escapeForAppleScript(params.query.trim())
+		: null;
 
 	const calendarsToSearch: string[] = [];
 	if (params.calendar?.trim()) {
 		calendarsToSearch.push(params.calendar.trim());
-	} else {
-		const listRes = executeAppleScript(
-			buildAppLevelScript(`
-set out to ""
-repeat with cal in calendars
-if length of out > 0 then set out to out & "${CAL_ROW_SEP}"
-set out to out & (name of cal as string)
-end repeat
-return out
-`),
-			{ timeoutMs: 20_000 },
-		);
-		if (!listRes.success) return [];
-		calendarsToSearch.push(
-			...listRes.output
-				.split(CAL_ROW_SEP)
-				.map((s) => s.trim())
-				.filter(Boolean),
-		);
 	}
 
-	const out: AppleCalendarEventSummary[] = [];
+	// Build the EventKit search script
+	const calFilter =
+		calendarsToSearch.length > 0
+			? `set theNSPredicate to current application's NSPredicate's predicateWithFormat_("title IN %@", {${calendarsToSearch.map((c) => `"${escapeForAppleScript(c)}"`).join(", ")}})`
+			: "set theNSPredicate to missing value";
 
-	for (const cal of calendarsToSearch) {
-		if (out.length >= limit) break;
-		const remaining = limit - out.length;
-		const safeCal = escapeForAppleScript(cal);
-		const inner = `
+	const startDateArg = dateFromISO
+		? `set theStartDate to current application's NSDate's dateWithString:"${dateFromISO}"`
+		: "set theStartDate to current application's NSDate's distantPast()";
+	const endDateArg = dateToISO
+		? `set theEndDate to current application's NSDate's dateWithString:"${dateToISO}"`
+		: "set theEndDate to current application's NSDate's distantFuture()";
+
+	const queryLine = queryFilter
+		? `set theNSQuery to current application's NSPredicate's predicateWithFormat_("title contains[c] %K", "${queryFilter}")
+set theEvents to theEvents's filteredArrayUsingPredicate:theNSQuery`
+		: "";
+
+	const script = `use AppleScript version "2.4"
+use framework "Foundation"
+use framework "EventKit"
 set outputText to ""
 set evtCount to 0
-set theEvents to events of calendar "${safeCal}"${whoseClause}
-repeat with evt in theEvents
-if evtCount >= ${remaining} then exit repeat
+${startDateArg}
+${endDateArg}
+set theEKEventStore to current application's EKEventStore's alloc()'s init()
+theEKEventStore's requestAccessToEntityType:0 completion:(missing value)
+set theCalendars to theEKEventStore's calendarsForEntityType:0
+${calFilter}
+if theNSPredicate is missing value then
+set calsToSearch to theCalendars
+else
+set calsToSearch to theCalendars's filteredArrayUsingPredicate:theNSPredicate
+end if
+set thePred to theEKEventStore's predicateForEventsWithStartDate:theStartDate endDate:theEndDate calendars:calsToSearch
+set theEvents to (theEKEventStore's eventsMatchingPredicate:thePred)
+set theEvents to theEvents's sortedArrayUsingSelector:"compareStartDateWithEvent:"
+${queryLine}
+repeat with i from 1 to (count of theEvents)
+if evtCount >= ${limit} then exit repeat
 try
-${buildEventPropertiesBlock()}
-${buildEventOutputBlock("evtCount")}
+set evt to item i of theEvents
+set evtUid to (evt's valueForKey:"eventIdentifier") as string
+set evtSummary to (evt's valueForKey:"title") as string
+set evtStartDate to (evt's valueForKey:"startDate")
+set evtEndDate to (evt's valueForKey:"endDate")
+set evtAllDay to ((evt's valueForKey:"isAllDay") as string)
+set evtLocation to ""
+try
+set evtLocation to ((evt's valueForKey:"location") as string)
+end try
+set evtDescription to ""
+try
+set evtDescription to ((evt's valueForKey:"description") as string)
+end try
+set calName to ""
+try
+set calName to ((evt's valueForKey:"calendar"'s valueForKey:"title") as string)
+end try
+set d to evtStartDate as date
+set evtStartStr to ((year of d) as string) & "-" & ((month of d as integer) as string) & "-" & ((day of d) as string) & "-" & ((hours of d) as string) & "-" & ((minutes of d) as string) & "-" & ((seconds of d) as string)
+set d2 to evtEndDate as date
+set evtEndStr to ((year of d2) as string) & "-" & ((month of d2 as integer) as string) & "-" & ((day of d2) as string) & "-" & ((hours of d2) as string) & "-" & ((minutes of d2) as string) & "-" & ((seconds of d2) as string)
+if evtCount > 0 then set outputText to outputText & "${EVENT_ROW_SEP}"
+set outputText to outputText & evtUid & "${EVENT_COL_SEP}" & evtSummary & "${EVENT_COL_SEP}" & evtStartStr & "${EVENT_COL_SEP}" & evtEndStr & "${EVENT_COL_SEP}" & evtAllDay & "${EVENT_COL_SEP}" & evtLocation & "${EVENT_COL_SEP}" & evtDescription & "${EVENT_COL_SEP}" & calName
 set evtCount to evtCount + 1
 end try
 end repeat
 return outputText
 `;
 
-		const script = buildAppLevelScript(inner);
-		const result = executeAppleScript(script, { timeoutMs: 60_000 });
-		if (!result.success || !result.output.trim()) continue;
-		const parsed = parseEventListOutput(result.output, cal);
-		out.push(...parsed.slice(0, remaining));
+	const result = executeAppleScript(script, { timeoutMs: 60_000 });
+	if (!result.success || !result.output.trim()) {
+		return [];
 	}
 
-	return out.slice(0, limit);
+	return parseEventListOutput(result.output, "").slice(0, limit);
+}
+
+/**
+ * Convert a date string (ISO 8601, natural language, etc.) to a UTC ISO string
+ * suitable for NSDate's dateWithString: format ("yyyy-MM-dd HH:mm:ss +0000").
+ */
+function isoToUTCString(input: string): string {
+	// Try parsing as a date
+	const d = new Date(input);
+	if (!Number.isNaN(d.getTime())) {
+		return formatAsUTCISO(d);
+	}
+	// Fallback: return as-is and hope NSDate can parse it
+	return input;
+}
+
+function formatAsUTCISO(d: Date): string {
+	const y = d.getUTCFullYear();
+	const mo = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+	const day = d.getUTCDate().toString().padStart(2, "0");
+	const h = d.getUTCHours().toString().padStart(2, "0");
+	const mi = d.getUTCMinutes().toString().padStart(2, "0");
+	const s = d.getUTCSeconds().toString().padStart(2, "0");
+	return `${y}-${mo}-${day} ${h}:${mi}:${s} +0000`;
 }
 
 export async function searchCalendarEvents(
