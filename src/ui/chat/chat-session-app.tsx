@@ -27,7 +27,10 @@ import {
 	getDefaultProvider,
 	readConfig,
 } from "../../config/index";
-import { getModulesWithCapability } from "../../integrations/index";
+import {
+	getModulesForCategory,
+	getModulesWithCapability,
+} from "../../integrations/index";
 import {
 	ALL_PROVIDER_CATEGORIES,
 	PROVIDER_CATEGORY_LABELS,
@@ -67,7 +70,7 @@ import {
 } from "./components/integration-multi-picker-modal";
 import { PlanStatusBar } from "./components/plan-status-bar";
 import { buildTranscriptNodes } from "./components/transcript";
-import { ACCENT } from "./constants";
+import { ACCENT, TIPS } from "./constants";
 import { formatToolStatusLine } from "./format-tool-status";
 import { activityLineForChatEvent } from "./pipeline-footer";
 import {
@@ -293,6 +296,8 @@ export function ChatSessionApp({
 		loading,
 		termCols,
 	]);
+
+	const tip = useMemo(() => TIPS[Math.floor(Math.random() * TIPS.length)], []);
 
 	const chatIntegrations = useMemo(
 		() => getModulesWithCapability("chat").filter((m) => m.chat),
@@ -1813,6 +1818,7 @@ export function ChatSessionApp({
 		<Box flexDirection="column" width="100%" padding={1}>
 			<AppHeader
 				termCols={termCols}
+				tip={tip}
 				subheader={
 					selectedModules.length === 0 ? (
 						<Text dimColor wrap="truncate-end">
@@ -1820,36 +1826,62 @@ export function ChatSessionApp({
 							{dryRun ? "  ·  dry-run" : ""}
 						</Text>
 					) : (
-						<Box flexDirection="row" flexWrap="wrap" justifyContent="center">
-							{selectedModules.map((m, idx) => {
-								const ok = connectedByIntegration[m.name];
-								return (
-									<Text key={m.name} dimColor wrap="truncate-end">
-										{idx === 0 ? "" : "  "}
-										{ok === true ? (
-											<Text color="green">✓</Text>
-										) : ok === false ? (
-											<Text color="red">✗</Text>
-										) : (
-											<Text dimColor>…</Text>
-										)}{" "}
-										{m.displayName}
+						<Box flexDirection="column" alignItems="center">
+							<Box flexDirection="row" flexWrap="wrap" justifyContent="center">
+								{ALL_PROVIDER_CATEGORIES.map((cat, idx) => {
+									const defaultName = getDefaultProvider(cat);
+									const defaultModule = defaultName
+										? getModulesForCategory(cat).find(
+												(m) => m.name === defaultName,
+											)
+										: undefined;
+									const ok = defaultModule
+										? connectedByIntegration[defaultModule.name]
+										: false;
+									const hasDefault = Boolean(defaultName && defaultModule);
+									return (
+										<Text key={cat} dimColor wrap="truncate-end">
+											{idx === 0 ? "" : "  "}
+											{hasDefault ? (
+												<>
+													{ok === true ? (
+														<Text color="green">✔︎</Text>
+													) : ok === false ? (
+														<Text color="red">✗</Text>
+													) : (
+														<Text dimColor>…</Text>
+													)}{" "}
+													{defaultModule?.displayName}
+												</>
+											) : (
+												<>
+													<Text color="red">❌</Text>{" "}
+													<Text italic>No {PROVIDER_CATEGORY_LABELS[cat]}</Text>
+												</>
+											)}
+										</Text>
+									);
+								})}
+								{dryRun ? (
+									<Text dimColor wrap="truncate-end">
+										{"  ·  "}dry-run
 									</Text>
-								);
-							})}
-							{dryRun ? (
+								) : null}
+							</Box>
+							{selectedModules.length > 0 ? (
 								<Text dimColor wrap="truncate-end">
-									{"  ·  "}dry-run
+									{selectedModules.length} Connection
+									{selectedModules.length !== 1 ? "s" : ""}
 								</Text>
 							) : null}
 						</Box>
 					)
 				}
 			/>
-			<Box flexDirection="column" marginTop={0} flexShrink={0}>
+			<Box flexDirection="column" marginTop={1} flexShrink={0}>
 				{buildTranscriptNodes(displayRows, termCols)}
 			</Box>
-			<Box marginTop={0} width={termCols} flexShrink={0}>
+			<Box marginTop={1} width={termCols} flexShrink={0}>
 				<Text dimColor wrap="truncate-end">
 					{activityDisplay}
 				</Text>

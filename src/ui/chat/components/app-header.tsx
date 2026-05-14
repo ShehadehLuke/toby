@@ -1,13 +1,20 @@
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
-import { ACCENT, CHAT_TITLE_ASCII } from "../constants";
+import packageJson from "../../../../package.json";
+import { ACCENT, CHAT_TITLE_ASCII, TIPS } from "../constants";
+
+const TOBY_VERSION =
+	(typeof packageJson.version === "string" ? packageJson.version.trim() : "") ||
+	process.env.TOBY_VERSION?.trim() ||
+	"0.1.0";
 
 interface AppHeaderProps {
 	readonly termCols?: number;
 	readonly subheader?: ReactNode;
+	readonly tip?: string;
 }
 
-export function AppHeader({ termCols, subheader }: AppHeaderProps) {
+export function AppHeader({ termCols, subheader, tip }: AppHeaderProps) {
 	return (
 		<>
 			<Box flexShrink={0} width={termCols} flexDirection="column">
@@ -18,7 +25,27 @@ export function AppHeader({ termCols, subheader }: AppHeaderProps) {
 						</Text>
 					</Box>
 				))}
+				<Box width={termCols} justifyContent="center">
+					<Text dimColor wrap="truncate-end">
+						v{TOBY_VERSION}
+					</Text>
+				</Box>
 			</Box>
+			{tip ? (
+				<Box
+					marginTop={0}
+					flexShrink={0}
+					width={termCols}
+					justifyContent="center"
+				>
+					<Text wrap="truncate-end">
+						<Text color={ACCENT} bold>
+							TIP{" "}
+						</Text>
+						<Text dimColor>{tip}</Text>
+					</Text>
+				</Box>
+			) : null}
 			{subheader ? (
 				<Box
 					marginTop={0}
