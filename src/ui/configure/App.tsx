@@ -348,6 +348,8 @@ type Screen = "nav" | "edit" | "select" | "confirm";
 interface AppCallbacks {
 	onCreatePersona: () => string;
 	onDeletePersona: (name: string) => void;
+	onSetDefaultPersona: (name: string) => void;
+	onClearDefaultPersona: () => void;
 }
 
 interface AppProps {
@@ -522,6 +524,18 @@ export function ConfigureApp({
 					};
 					setValues(newValues);
 					doRefresh(newValues);
+				} else if (item.key.endsWith("._setDefault")) {
+					const personaName = item.key
+						.replace("personas.", "")
+						.replace("._setDefault", "");
+					if (item.label === "★ Default persona") {
+						callbacks.onClearDefaultPersona();
+						setStatusMessage("Default persona cleared.");
+					} else {
+						callbacks.onSetDefaultPersona(personaName);
+						setStatusMessage(`"${personaName}" set as default persona.`);
+					}
+					doRefresh(values);
 				}
 			} else if (item.kind === "delete") {
 				const personaName = item.key
@@ -699,6 +713,8 @@ export function runConfigureUI(
 	callbacks: {
 		onCreatePersona: () => string;
 		onDeletePersona: (name: string) => void;
+		onSetDefaultPersona: (name: string) => void;
+		onClearDefaultPersona: () => void;
 	},
 ): void {
 	const profile = detectTerminalProfile();

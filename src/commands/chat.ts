@@ -6,6 +6,7 @@ import type { IntegrationModule } from "../integrations/types";
 import {
 	DEFAULT_CHAT_PERSONA,
 	listPersonas,
+	resolveDefaultPersona,
 	resolvePersona,
 } from "../personas/index";
 import { loadLocalSkills } from "../skills/index";
@@ -225,7 +226,7 @@ async function runConsoleChatTurn(params: {
 
 function resolveChatPersona(personaName?: string): Persona | null {
 	if (!personaName) {
-		return DEFAULT_CHAT_PERSONA;
+		return resolveDefaultPersona();
 	}
 
 	const persona = resolvePersona(personaName);

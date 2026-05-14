@@ -61,6 +61,7 @@ import type { ProviderCategory } from "../integrations/types";
 interface TobyConfig {
 	integrations: Record<string, Record<string, unknown>>;
 	personas: Persona[];
+	defaultPersona?: string;
 	defaultProviders?: Partial<Record<ProviderCategory, string>>;
 }
 
@@ -141,6 +142,7 @@ export function readConfig(): TobyConfig {
 	return {
 		integrations: parsed.integrations ?? {},
 		personas,
+		defaultPersona: parsed.defaultPersona,
 		defaultProviders: parsed.defaultProviders,
 	};
 }
@@ -281,5 +283,21 @@ export function setDefaultProvider(
 		cfg.defaultProviders = {};
 	}
 	cfg.defaultProviders[category] = integrationName;
+	writeConfig(cfg);
+}
+
+export function getDefaultPersonaName(): string | undefined {
+	return readConfig().defaultPersona;
+}
+
+export function setDefaultPersona(personaName: string): void {
+	const cfg = readConfig();
+	cfg.defaultPersona = personaName;
+	writeConfig(cfg);
+}
+
+export function clearDefaultPersona(): void {
+	const cfg = readConfig();
+	cfg.defaultPersona = undefined;
 	writeConfig(cfg);
 }

@@ -1,3 +1,4 @@
+import { getDefaultPersonaName } from "../../config/index";
 import {
 	getIntegrationModules,
 	getModulesForCategory,
@@ -81,6 +82,8 @@ export function buildSettingsTree(
 		},
 	);
 
+	const currentDefault = getDefaultPersonaName();
+
 	const personaItems: SettingsItem[] = personas.map((p) => ({
 		label: p.name,
 		kind: "section" as const,
@@ -121,6 +124,12 @@ export function buildSettingsTree(
 					availableProviders.find((pr) => pr.id === p.ai.provider)?.models ??
 					[],
 				currentValue: p.ai.model,
+			},
+			{
+				label:
+					currentDefault === p.name ? "★ Default persona" : "Set as default",
+				kind: "action" as const,
+				key: `personas.${p.name}._setDefault`,
 			},
 			{
 				label: "Delete this persona",

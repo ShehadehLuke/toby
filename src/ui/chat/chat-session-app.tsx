@@ -24,6 +24,7 @@ import {
 } from "../../commands/chat-integrations";
 import {
 	type Persona,
+	getDefaultPersonaName,
 	getDefaultProvider,
 	readConfig,
 } from "../../config/index";
@@ -1948,8 +1949,13 @@ export function ChatSessionApp({
 					{personaPicker.rows.map((row, i) => {
 						const active = i === personaPicker.cursorIndex;
 						const prefix = active ? "› " : "  ";
+						const defaultName = getDefaultPersonaName();
+						const isDefault =
+							row.kind === "persona" && row.persona.name === defaultName;
 						const label =
-							row.kind === "add" ? "New persona…" : row.persona.name;
+							row.kind === "add"
+								? "New persona…"
+								: `${row.persona.name}${isDefault ? " ★" : ""}`;
 						return (
 							<Box
 								key={row.kind === "add" ? "add" : row.persona.name}
@@ -1965,6 +1971,9 @@ export function ChatSessionApp({
 					<Box marginTop={1}>
 						<Text dimColor wrap="truncate-end">
 							Active: {activePersona.name}
+							{activePersona.name === getDefaultPersonaName()
+								? " (default)"
+								: ""}
 						</Text>
 					</Box>
 				</Box>

@@ -2,8 +2,11 @@ import { AI_PROVIDERS } from "../../ai/providers";
 import {
 	type CredentialsFile,
 	type Persona,
+	clearDefaultPersona,
+	getDefaultPersonaName,
 	readConfig,
 	readCredentials,
+	setDefaultPersona,
 	writeConfig,
 	writeCredentials,
 } from "../../config/index";
@@ -23,6 +26,8 @@ interface ConfigureSession {
 	readonly callbacks: {
 		readonly onCreatePersona: () => string;
 		readonly onDeletePersona: (name: string) => void;
+		readonly onSetDefaultPersona: (name: string) => void;
+		readonly onClearDefaultPersona: () => void;
 	};
 }
 
@@ -95,12 +100,21 @@ export function createConfigureSession(): ConfigureSession {
 		onDeletePersona: (personaName: string) => {
 			const cfg = readConfig();
 			cfg.personas = cfg.personas.filter((p) => p.name !== personaName);
+			if (cfg.defaultPersona === personaName) {
+				cfg.defaultPersona = undefined;
+			}
 			writeConfig(cfg);
 			for (const key of Object.keys(credentialValues)) {
 				if (key.startsWith(`personas.${personaName}.`)) {
 					delete credentialValues[key];
 				}
 			}
+		},
+		onSetDefaultPersona: (personaName: string) => {
+			setDefaultPersona(personaName);
+		},
+		onClearDefaultPersona: () => {
+			clearDefaultPersona();
 		},
 	};
 
