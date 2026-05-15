@@ -66,7 +66,7 @@ export function buildTranscriptNodes(
 										dimColor={bodyDim}
 										wrap="truncate-end"
 									>
-										{line.length > 0 ? line : " "}
+										↳ {line.length > 0 ? line : " "}
 									</Text>
 								),
 							)}

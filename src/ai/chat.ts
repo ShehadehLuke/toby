@@ -52,6 +52,8 @@ export type ChatWithToolsOptions = {
 	readonly onChatEvent?: ChatEventSink;
 	/** Provider-specific options passed through to the model call. */
 	readonly providerOptions?: unknown;
+	/** Header label used for streamed assistant transcript segments. */
+	readonly assistantHeader?: string;
 	/**
 	 * Optional abort signal for cancelling the model turn mid-flight.
 	 * Propagated to `streamText` / `generateText` and checked during
@@ -326,7 +328,7 @@ export async function chatWithTools(
 						type: "assistant_segment_start",
 						id: assistantSegmentId,
 						seq: nextSeq(),
-						header: "Toby",
+						header: options?.assistantHeader ?? "Toby",
 					});
 				}
 				onChatEvent({

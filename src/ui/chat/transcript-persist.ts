@@ -17,6 +17,7 @@ type BoxedStepPayload = {
 	readonly body: string;
 	readonly toolBlockKey?: string;
 	readonly toolName?: string;
+	readonly integrationLabel?: string;
 	readonly cacheHit?: boolean;
 	readonly toolRuns?: readonly {
 		readonly blockKey: string;
@@ -40,6 +41,9 @@ export function serializeTranscriptEntry(e: TranscriptEntry): {
 			body: e.body,
 			...(e.toolBlockKey !== undefined ? { toolBlockKey: e.toolBlockKey } : {}),
 			...(e.toolName !== undefined ? { toolName: e.toolName } : {}),
+			...(e.integrationLabel !== undefined
+				? { integrationLabel: e.integrationLabel }
+				: {}),
 			...(e.cacheHit !== undefined ? { cacheHit: e.cacheHit } : {}),
 			...(e.toolRuns !== undefined ? { toolRuns: e.toolRuns } : {}),
 		};
@@ -102,6 +106,9 @@ export function deserializeTranscriptRow(row: {
 						? { toolBlockKey: p.toolBlockKey }
 						: {}),
 					...(typeof p.toolName === "string" ? { toolName: p.toolName } : {}),
+					...(typeof p.integrationLabel === "string"
+						? { integrationLabel: p.integrationLabel }
+						: {}),
 					...(typeof p.cacheHit === "boolean" ? { cacheHit: p.cacheHit } : {}),
 					...(Array.isArray(p.toolRuns)
 						? {

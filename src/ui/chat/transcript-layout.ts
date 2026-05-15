@@ -6,7 +6,6 @@ import {
 import {
 	ASSISTANT_TRANSCRIPT_GLYPH,
 	PIPELINE_STEP_GLYPH,
-	getToolTranscriptGlyph,
 } from "./tool-transcript-icons";
 import type { DisplayRow, TranscriptEntry } from "./types";
 
@@ -197,12 +196,29 @@ function parseAssistantSegments(text: string): AssistantSegment[] {
 	return segments;
 }
 
+const HIDDEN_LIFECYCLE_HEADERS = new Set([
+	"Sending request to model…",
+	"Updating session messages…",
+	"Saving session…",
+]);
+
+function capBodyLines(
+	lines: readonly string[],
+	variant: "prep" | "lifecycle" | "assistant" | "tool" | "plan",
+): readonly string[] {
+	if (variant === "assistant" || lines.length <= 3) {
+		return lines;
+	}
+	return lines.slice(-3);
+}
+
 export function flattenTranscript(
 	entries: readonly TranscriptEntry[],
 	streamingText: string,
 	loading: boolean,
 	termCols: number,
 	streamingHeader = "Toby",
+	debug = false,
 ): DisplayRow[] {
 	const userContentWidth = Math.max(8, termCols - 1);
 	const assistantW = assistantInnerTextWidth(termCols);
@@ -211,6 +227,14 @@ export function flattenTranscript(
 	let assistantBlockSeq = 0;
 	for (let i = 0; i < entries.length; i++) {
 		const e = entries[i];
+		if (
+			!debug &&
+			e.kind === "boxed_step" &&
+			e.variant === "lifecycle" &&
+			HIDDEN_LIFECYCLE_HEADERS.has(e.header)
+		) {
+			continue;
+		}
 		const next = entries[i + 1];
 		if (e.kind === "user") {
 			for (const line of hardWrap(e.text, userContentWidth)) {
@@ -227,24 +251,28 @@ export function flattenTranscript(
 		} else if (e.kind === "boxed_step") {
 			const leadingGlyph =
 				e.variant === "tool"
-					? getToolTranscriptGlyph(e.toolName ?? "")
+					? PIPELINE_STEP_GLYPH
 					: e.variant === "prep" || e.variant === "lifecycle"
 						? PIPELINE_STEP_GLYPH
 						: e.variant === "plan"
 							? "◆"
 							: ASSISTANT_TRANSCRIPT_GLYPH;
+			const bodyLines =
+				e.variant === "tool" &&
+				e.toolRuns !== undefined &&
+				e.toolRuns.length > 1
+					? flattenGroupedToolRunLines(e.toolRuns, termCols)
+					: flattenBoxedBodyLines(e.body, termCols);
 			rows.push({
 				kind: "boxed_block",
 				id: e.id,
 				variant: e.variant,
 				header: e.header,
-				bodyLines:
-					e.variant === "tool" &&
-					e.toolRuns !== undefined &&
-					e.toolRuns.length > 1
-						? flattenGroupedToolRunLines(e.toolRuns, termCols)
-						: flattenBoxedBodyLines(e.body, termCols),
+				bodyLines: capBodyLines(bodyLines, e.variant),
 				leadingGlyph,
+				...(e.integrationLabel !== undefined
+					? { integrationLabel: e.integrationLabel }
+					: {}),
 				...(e.cacheHit !== undefined ? { cacheHit: e.cacheHit } : {}),
 			});
 			if (next !== undefined) {

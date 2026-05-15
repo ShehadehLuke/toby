@@ -216,8 +216,9 @@ export function ChatSessionApp({
 	const [loading, setLoading] = useState(false);
 	const [activityLine, setActivityLine] = useState("Thinking…");
 	const [streamingAssistant, setStreamingAssistant] = useState("");
-	const [streamingAssistantHeader, setStreamingAssistantHeader] =
-		useState("Toby");
+	const [streamingAssistantHeader, setStreamingAssistantHeader] = useState(
+		persona.name,
+	);
 	const [lastUsage, setLastUsage] = useState<LanguageModelUsage | null>(null);
 	const [bootError, setBootError] = useState<string | null>(null);
 	const [askModal, setAskModal] = useState<AskModal | null>(null);
@@ -256,7 +257,7 @@ export function ChatSessionApp({
 	const [activityGlyphFrame, setActivityGlyphFrame] = useState(0);
 	const didAutoRunFirstTurnRef = useRef(false);
 	const assistantStreamBufRef = useRef("");
-	const assistantSegmentHeaderRef = useRef("Toby");
+	const assistantSegmentHeaderRef = useRef(persona.name);
 	const transcriptLocalSeqRef = useRef(0);
 	const assistantSegmentCommittedRef = useRef(false);
 	const askSelectedRef = useRef(0);
@@ -288,6 +289,7 @@ export function ChatSessionApp({
 			loading,
 			termCols,
 			streamingAssistantHeader,
+			debug,
 		);
 	}, [
 		messages,
@@ -296,6 +298,7 @@ export function ChatSessionApp({
 		streamingAssistantHeader,
 		loading,
 		termCols,
+		debug,
 	]);
 
 	const tip = useMemo(() => TIPS[Math.floor(Math.random() * TIPS.length)], []);
@@ -473,7 +476,8 @@ export function ChatSessionApp({
 			}
 			setLoading(true);
 			setStreamingAssistant("");
-			setStreamingAssistantHeader("Toby");
+			setStreamingAssistantHeader(activePersona.name);
+			assistantSegmentHeaderRef.current = activePersona.name;
 			assistantStreamBufRef.current = "";
 			assistantSegmentCommittedRef.current = false;
 			const turnAbort = new AbortController();
@@ -575,7 +579,7 @@ export function ChatSessionApp({
 						id: randomUUID(),
 						seq: nextLocalSeq(),
 						variant: "assistant",
-						header: "Toby",
+						header: activePersonaRef.current.name,
 						body: reply,
 					});
 				}

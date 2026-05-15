@@ -22,6 +22,7 @@ export type TranscriptEntry =
 			readonly toolBlockKey?: string;
 			/** Set when `variant` is `"tool"` — used for transcript icon only. */
 			readonly toolName?: string;
+			readonly integrationLabel?: string;
 			readonly cacheHit?: boolean;
 			/** Optional grouped runs for consecutive calls to the same tool. */
 			readonly toolRuns?: readonly ToolRunEntry[];
@@ -55,6 +56,7 @@ export type DisplayRow =
 			readonly header: string;
 			readonly bodyLines: readonly string[];
 			readonly leadingGlyph: string;
+			readonly integrationLabel?: string;
 			readonly cacheHit?: boolean;
 	  }
 	| {

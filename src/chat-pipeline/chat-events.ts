@@ -53,6 +53,7 @@ export type ChatEvent =
 			readonly blockKey: string;
 			readonly seq: number;
 			readonly toolName: string;
+			readonly integrationLabel?: string;
 			readonly args: Record<string, unknown>;
 	  }
 	| {
@@ -60,6 +61,7 @@ export type ChatEvent =
 			readonly blockKey: string;
 			readonly seq: number;
 			readonly toolName: string;
+			readonly integrationLabel?: string;
 			readonly args: Record<string, unknown>;
 			readonly result: unknown;
 			readonly error?: unknown;

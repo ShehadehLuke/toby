@@ -205,6 +205,11 @@ describe("formatToolCallHeader", () => {
 		expect(h).toContain("…");
 		expect(h).toContain("Archive email");
 	});
+
+	it("prefixes the integration label when provided", () => {
+		const h = formatToolCallHeader("listLabels", {}, "Gmail");
+		expect(h).toBe("Gmail: List Gmail labels");
+	});
 });
 
 describe("boxed_step persistence", () => {
@@ -232,6 +237,7 @@ describe("boxed_step persistence", () => {
 			body: "Found 1 label(s).",
 			toolBlockKey: "bk",
 			toolName: "listLabels",
+			integrationLabel: "Gmail",
 			cacheHit: true,
 		};
 		const row = serializeTranscriptEntry(e);
@@ -300,7 +306,7 @@ describe("flattenTranscript boxed_step", () => {
 		expect(rows.some((r) => r.kind === "boxed_block")).toBe(true);
 		const bb = rows.find((r) => r.kind === "boxed_block");
 		expect(bb && bb.kind === "boxed_block" && bb.header).toBe("List labels");
-		expect(bb && bb.kind === "boxed_block" && bb.leadingGlyph).toBe("↳");
+		expect(bb && bb.kind === "boxed_block" && bb.leadingGlyph).toBe("›");
 		expect(bb && bb.kind === "boxed_block" && bb.cacheHit).toBe(true);
 	});
 
@@ -390,7 +396,7 @@ describe("flattenTranscript boxed_step", () => {
 		expect(bb?.kind).toBe("boxed_block");
 		if (bb?.kind === "boxed_block") {
 			expect(bb.header).toBe("List labels (x2)");
-			expect(bb.bodyLines.join("\n")).toContain("1. List labels");
+			expect(bb.bodyLines).toHaveLength(3);
 			expect(bb.bodyLines.join("\n")).toContain("2. List labels [cache]");
 		}
 	});
@@ -430,6 +436,26 @@ describe("flattenTranscript boxed_step", () => {
 		if (bb?.kind === "boxed_block") {
 			expect(bb.header).toBe("Fetch email metadata (x3)");
 			expect(bb.bodyLines).toEqual(["Found 20 email(s)."]);
+		}
+	});
+
+	it("caps non-assistant body lines to the last three lines", () => {
+		const entries: TranscriptEntry[] = [
+			{
+				kind: "boxed_step",
+				id: "t1",
+				seq: 1,
+				variant: "tool",
+				header: "List labels",
+				body: "one\ntwo\nthree\nfour",
+				toolName: "listLabels",
+			},
+		];
+		const rows = flattenTranscript(entries, "", false, 80);
+		const bb = rows.find((r) => r.kind === "boxed_block");
+		expect(bb?.kind).toBe("boxed_block");
+		if (bb?.kind === "boxed_block") {
+			expect(bb.bodyLines).toEqual(["two", "three", "four"]);
 		}
 	});
 });
@@ -524,5 +550,62 @@ describe("plan events", () => {
 		const row = serializeTranscriptEntry(e);
 		expect(row.kind).toBe("boxed_step");
 		expect(deserializeTranscriptRow(row)).toEqual(e);
+	});
+});
+
+describe("flattenTranscript hidden lifecycle headers", () => {
+	const hiddenEntries: TranscriptEntry[] = [
+		{
+			kind: "boxed_step",
+			id: "l1",
+			seq: 1,
+			variant: "lifecycle",
+			header: "Sending request to model…",
+			body: "",
+		},
+		{
+			kind: "boxed_step",
+			id: "l2",
+			seq: 2,
+			variant: "lifecycle",
+			header: "Updating session messages…",
+			body: "Session messages updated.",
+		},
+		{
+			kind: "boxed_step",
+			id: "l3",
+			seq: 3,
+			variant: "lifecycle",
+			header: "Saving session…",
+			body: "Session data queued to save.",
+		},
+	];
+
+	it("hides specific lifecycle headers when debug is off", () => {
+		const rows = flattenTranscript(hiddenEntries, "", false, 80, "Toby", false);
+		const boxed = rows.filter((r) => r.kind === "boxed_block");
+		expect(boxed).toHaveLength(0);
+	});
+
+	it("shows specific lifecycle headers when debug is on", () => {
+		const rows = flattenTranscript(hiddenEntries, "", false, 80, "Toby", true);
+		const boxed = rows.filter((r) => r.kind === "boxed_block");
+		expect(boxed).toHaveLength(3);
+	});
+
+	it("does not hide other lifecycle headers", () => {
+		const entries: TranscriptEntry[] = [
+			{
+				kind: "boxed_step",
+				id: "p1",
+				seq: 1,
+				variant: "lifecycle",
+				header: "Phase 1/2: Process inbox",
+				body: "Completed",
+			},
+		];
+		const rows = flattenTranscript(entries, "", false, 80, "Toby", false);
+		const boxed = rows.filter((r) => r.kind === "boxed_block");
+		expect(boxed).toHaveLength(1);
 	});
 });

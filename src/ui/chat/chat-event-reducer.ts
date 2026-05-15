@@ -38,9 +38,20 @@ function summarizeArgsForHeader(
 export function formatToolCallHeader(
 	toolName: string,
 	args: Record<string, unknown>,
+	integrationLabel?: string,
 ): string {
 	const label = getToolDisplayLabel(toolName);
-	return `${label}${summarizeArgsForHeader(toolName, args)}`;
+	const prefix = integrationLabel ? `${integrationLabel}: ` : "";
+	return `${prefix}${label}${summarizeArgsForHeader(toolName, args)}`;
+}
+
+function formatGroupedToolHeader(
+	toolName: string,
+	count: number,
+	integrationLabel?: string,
+): string {
+	const prefix = integrationLabel ? `${integrationLabel}: ` : "";
+	return `${prefix}${getToolDisplayLabel(toolName)} (x${count})`;
 }
 
 function replaceEntry(
@@ -203,11 +214,19 @@ export function applyChatEvent(
 				...prevRuns,
 				{
 					blockKey: event.blockKey,
-					header: formatToolCallHeader(event.toolName, event.args),
+					header: formatToolCallHeader(
+						event.toolName,
+						event.args,
+						event.integrationLabel,
+					),
 					body: "",
 				},
 			];
-			const nextHeader = `${getToolDisplayLabel(event.toolName)} (x${nextRuns.length})`;
+			const nextHeader = formatGroupedToolHeader(
+				event.toolName,
+				nextRuns.length,
+				event.integrationLabel ?? previous.integrationLabel,
+			);
 			return replaceEntry(entries, entries.length - 1, {
 				...previous,
 				seq: event.seq,
@@ -215,6 +234,9 @@ export function applyChatEvent(
 				body: "",
 				toolRuns: nextRuns,
 				toolName: event.toolName,
+				...(event.integrationLabel !== undefined
+					? { integrationLabel: event.integrationLabel }
+					: {}),
 				cacheHit: undefined,
 			});
 		}
@@ -225,10 +247,17 @@ export function applyChatEvent(
 				id: event.blockKey,
 				seq: event.seq,
 				variant: "tool",
-				header: formatToolCallHeader(event.toolName, event.args),
+				header: formatToolCallHeader(
+					event.toolName,
+					event.args,
+					event.integrationLabel,
+				),
 				body: "",
 				toolBlockKey: event.blockKey,
 				toolName: event.toolName,
+				...(event.integrationLabel !== undefined
+					? { integrationLabel: event.integrationLabel }
+					: {}),
 			},
 		];
 	}
@@ -292,10 +321,17 @@ export function applyChatEvent(
 					id: event.blockKey,
 					seq: event.seq,
 					variant: "tool",
-					header: formatToolCallHeader(event.toolName, event.args),
+					header: formatToolCallHeader(
+						event.toolName,
+						event.args,
+						event.integrationLabel,
+					),
 					body: detail,
 					toolBlockKey: event.blockKey,
 					toolName: event.toolName,
+					...(event.integrationLabel !== undefined
+						? { integrationLabel: event.integrationLabel }
+						: {}),
 					...(event.cacheHit !== undefined ? { cacheHit: event.cacheHit } : {}),
 				},
 			];
@@ -320,14 +356,29 @@ export function applyChatEvent(
 				seq: event.seq,
 				toolName: event.toolName,
 				toolRuns: nextRuns,
+				...(event.integrationLabel !== undefined
+					? { integrationLabel: event.integrationLabel }
+					: {}),
 				...(nextRuns.length > 1
 					? {
-							header: `${getToolDisplayLabel(event.toolName)} (x${nextRuns.length})`,
+							header: formatGroupedToolHeader(
+								event.toolName,
+								nextRuns.length,
+								event.integrationLabel ?? cur.integrationLabel,
+							),
 							body: "",
 							cacheHit: undefined,
 						}
 					: {
-							header: nextRuns[0]?.header ?? cur.header,
+							header:
+								event.integrationLabel !== undefined ||
+								cur.integrationLabel !== undefined
+									? formatToolCallHeader(
+											event.toolName,
+											event.args,
+											event.integrationLabel ?? cur.integrationLabel,
+										)
+									: (nextRuns[0]?.header ?? cur.header),
 							body: nextRuns[0]?.body ?? detail,
 							cacheHit: nextRuns[0]?.cacheHit,
 						}),
@@ -338,6 +389,9 @@ export function applyChatEvent(
 			body: detail,
 			seq: event.seq,
 			toolName: event.toolName,
+			...(event.integrationLabel !== undefined
+				? { integrationLabel: event.integrationLabel }
+				: {}),
 			...(event.cacheHit !== undefined ? { cacheHit: event.cacheHit } : {}),
 		});
 	}

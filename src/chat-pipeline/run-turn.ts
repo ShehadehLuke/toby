@@ -10,6 +10,7 @@ import { getIntegrationModule } from "../integrations/index";
 import type { IntegrationModule } from "../integrations/types";
 import { log } from "../logging/chat-log";
 import { createMemoryTools } from "../memory/tools";
+import type { ChatEvent } from "./chat-events";
 
 type ChatTurnOptions = {
 	readonly persona: Persona;
@@ -79,8 +80,17 @@ export async function runSharedChatTurn(
 		}),
 	);
 	const mergedTools: Record<string, Tool> = {};
-	for (const b of toolBundles) {
+	const toolIntegrationLabels: Record<string, string> = {};
+	for (let i = 0; i < toolBundles.length; i++) {
+		const b = toolBundles[i];
+		const module = modules[i];
+		if (!b || !module) {
+			continue;
+		}
 		Object.assign(mergedTools, b.tools);
+		for (const toolName of Object.keys(b.tools)) {
+			toolIntegrationLabels[toolName] = module.displayName;
+		}
 	}
 	const appliedActionsArrays = toolBundles.map((b) => b.appliedActions);
 	const appliedActions = appliedActionsArrays.flatMap((a) => [...a]);
@@ -115,14 +125,45 @@ export async function runSharedChatTurn(
 		toolCount: Object.keys(tools).length,
 		model: options.persona.ai.model,
 	});
+	const chatWithToolsOptions =
+		applyChatPromptCaching(options.chatWithToolsOptions, {
+			persona: options.persona,
+			moduleNames,
+		}) ?? {};
+	const onChatEvent = chatWithToolsOptions.onChatEvent;
+	const enrichedChatWithToolsOptions: ChatWithToolsOptions =
+		onChatEvent === undefined
+			? {
+					...chatWithToolsOptions,
+					assistantHeader:
+						chatWithToolsOptions.assistantHeader ?? options.persona.name,
+				}
+			: {
+					...chatWithToolsOptions,
+					assistantHeader:
+						chatWithToolsOptions.assistantHeader ?? options.persona.name,
+					onChatEvent: (event: ChatEvent) => {
+						if (
+							event.type === "tool_call_start" ||
+							event.type === "tool_call_complete"
+						) {
+							const integrationLabel = toolIntegrationLabels[event.toolName];
+							onChatEvent(
+								integrationLabel === undefined
+									? event
+									: { ...event, integrationLabel },
+							);
+							return;
+						}
+						onChatEvent(event);
+					},
+				};
+
 	const result = await chatWithTools(
 		model,
 		messages,
 		tools,
-		applyChatPromptCaching(options.chatWithToolsOptions, {
-			persona: options.persona,
-			moduleNames,
-		}),
+		enrichedChatWithToolsOptions,
 	);
 
 	log("info", "turn", "turn_end", {
