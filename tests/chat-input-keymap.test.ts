@@ -63,18 +63,12 @@ describe("word navigation keymap", () => {
 	});
 
 	it("maps Meta+b (ESC+b from macOS Option+Left) to word-backward", () => {
-		const action = resolveWordNavigationAction(
-			"b",
-			mkKey({ meta: true }),
-		);
+		const action = resolveWordNavigationAction("b", mkKey({ meta: true }));
 		expect(action).toBe("word-backward");
 	});
 
 	it("maps Meta+f (ESC+f from macOS Option+Right) to word-forward", () => {
-		const action = resolveWordNavigationAction(
-			"f",
-			mkKey({ meta: true }),
-		);
+		const action = resolveWordNavigationAction("f", mkKey({ meta: true }));
 		expect(action).toBe("word-forward");
 	});
 
